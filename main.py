@@ -2,8 +2,9 @@
 main.py - starts SignLingo, the downloadable app.
 
 Opens a modern start menu to choose between:
-  [1] Single Letter Practice (practice.py)
-  [2] Word Challenge Mode   (words.py)
+  [1] Letter practice  (practice.py)
+  [2] Word challenge   (words.py)
+All screens share one look from ui_style.py (see DESIGN.md).
 
 Run from code:    python main.py
 Build the app:    ./build_app.sh   (makes dist/SignLingo.app on macOS)
@@ -20,6 +21,7 @@ import time
 import traceback
 import cv2
 import numpy as np
+import ui_style as ui
 
 PACKAGED = hasattr(sys, "_MEIPASS")
 
@@ -30,10 +32,13 @@ if PACKAGED:
 
 
 def show_message(text):
-    """A pop-up box on macOS; printed output elsewhere."""
+    """A pop-up box on macOS and Windows; printed output elsewhere."""
     print(text)
     if sys.platform == "darwin":
         subprocess.run(["osascript", "-e", f'display alert "SignLingo" message "{text}"'])
+    elif sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, text, "SignLingo", 0)
 
 
 def wait_for_camera(seconds=30):
@@ -49,43 +54,21 @@ def wait_for_camera(seconds=30):
     return False
 
 
+MODES = [("1", "Letter practice", "practice"), ("2", "Word challenge", "words")]
+
+
 def choose_mode():
-    """Renders a start menu to select between practice and words modes."""
+    """Shows the start menu (same look as the games, from ui_style.py)."""
     canvas = np.zeros((480, 640, 3), dtype=np.uint8)
-    canvas[:] = (24, 24, 27)
-
-    # Title & Subtitle
-    cv2.putText(canvas, "SIGNLINGO", (215, 110), 
-                cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 3, cv2.LINE_AA)
-    cv2.putText(canvas, "Select a Practice Mode to Begin", (185, 155), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (161, 161, 170), 1, cv2.LINE_AA)
-
-    # Mode 1 Card: Single Letter Practice
-    cv2.rectangle(canvas, (110, 195), (530, 265), (39, 39, 42), -1)
-    cv2.rectangle(canvas, (110, 195), (530, 265), (63, 63, 70), 1)
-    cv2.putText(canvas, "[1] Single Letter Practice", (135, 238), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.72, (34, 197, 94), 2, cv2.LINE_AA)
-
-    # Mode 2 Card: Word Spelling Challenge
-    cv2.rectangle(canvas, (110, 290), (530, 360), (39, 39, 42), -1)
-    cv2.rectangle(canvas, (110, 290), (530, 360), (63, 63, 70), 1)
-    cv2.putText(canvas, "[2] Word Spelling Challenge", (135, 333), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.72, (0, 255, 255), 2, cv2.LINE_AA)
-
-    # Instructions
-    cv2.putText(canvas, "Press [1] or [2] to start   |   [ESC] to Exit", (170, 425), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.48, (113, 113, 122), 1, cv2.LINE_AA)
-
-    cv2.imshow("SignLingo", canvas)
+    ui.draw_menu(canvas, "SignLingo", [(key, label) for key, label, _ in MODES],
+                 "press a number to start   ESC = quit")
+    cv2.imshow(ui.WINDOW, canvas)
     while True:
         key = cv2.waitKey(0) & 0xFF
-        if key == ord("1"):
-            cv2.destroyAllWindows()
-            return "practice"
-        elif key == ord("2"):
-            cv2.destroyAllWindows()
-            return "words"
-        elif key == 27:
+        for number, _, module in MODES:
+            if key == ord(number):
+                return module
+        if key == 27:
             cv2.destroyAllWindows()
             sys.exit(0)
 
@@ -100,8 +83,8 @@ try:
                      "Privacy & Security, Camera, then open SignLingo again.")
         sys.exit(1)
 
-    selected_mode = choose_mode()
-    runpy.run_module(selected_mode, run_name="__main__")
+    while True:   # ESC in a game comes back here; ESC in the menu quits
+        runpy.run_module(choose_mode(), run_name="__main__")
 except SystemExit:
     raise
 except Exception:

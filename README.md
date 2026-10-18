@@ -17,6 +17,11 @@ This is a **fingerspelling practice tool**, not an app that teaches ASL.
 5. J and Z are recognized from the path your finger draws
    (`motion_recognition.py`).
 
+## Design
+
+Every SignLingo screen uses the shared look in `ui_style.py`. Read
+[DESIGN.md](DESIGN.md) before adding a screen or changing how anything looks.
+
 ## Setup
 
 Python 3.10 to 3.12.
@@ -30,6 +35,7 @@ pip install -r requirements.txt
 | Command | What it does |
 |---|---|
 | `python app.py` | **Website** (Gradio): open the link it prints, allow the camera, press Record. Live tab shows the letter; Practice tab is the game with a letter picker. |
+| `python main.py` | **SignLingo desktop app**: start menu with letter practice and the word challenge. ESC goes back to the menu. Build it with `./build_app.sh` (Mac) or `pyinstaller --noconfirm SignLingo.spec` (Windows). |
 | `python practice.py` | Practice game: make the letter shown, hold it, get "Correct!". SPACE skips, ESC quits. |
 | `python practice.py B` | Focus mode: practice only B (or press a letter key while running; `0` goes back to random). Shows how many times it worked and how long the last one took. |
 | `python camera.py` | Live classifier: shows the letter it sees. Press a letter key to record 20 examples (saved to `data/examples_camera.json`). ESC quits. |

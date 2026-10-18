@@ -1,4 +1,6 @@
-# SignLingo.spec - recipe PyInstaller uses to build the app (run ./build_app.sh)
+# SignLingo.spec - recipe PyInstaller uses to build the app
+# Mac: ./build_app.sh   Windows: pyinstaller --noconfirm SignLingo.spec
+# Every screen module main.py can open must be listed in hiddenimports.
 import sys
 from PyInstaller.utils.hooks import collect_all
 
@@ -8,7 +10,7 @@ a = Analysis(
     ["main.py"],
     datas=[("hand_landmarker.task", "."), ("data/*.json", "data")] + mp_datas,
     binaries=mp_binaries,
-    hiddenimports=["practice", "features", "motion_recognition"] + mp_hidden,
+    hiddenimports=["practice", "words", "ui_style", "features", "motion_recognition"] + mp_hidden,
     excludes=["gradio", "pandas"],
 )
 pyz = PYZ(a.pure)

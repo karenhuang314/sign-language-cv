@@ -6,6 +6,7 @@ import cv2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from signlingo import camera
 from signlingo.paths import MODEL_PATH
 from signlingo.settings_ui import window_is_open
 
@@ -20,8 +21,14 @@ def require_open_window():
 
 @contextmanager
 def mode_camera():
-    """Release both native resources even on window close or inference errors."""
-    landmarker = cap = None
+    """Reuse the launcher's camera; release everything on close or failure.
+
+    Returning to the menu keeps its camera/window alive for faster startup.
+    Standalone modes own their camera and release it on normal exit, too.
+    """
+    reuse_camera = camera.is_open()
+    keep_open = False
+    landmarker = None
     try:
         landmarker = vision.HandLandmarker.create_from_options(
             vision.HandLandmarkerOptions(
@@ -30,18 +37,22 @@ def mode_camera():
                 num_hands=1,
             )
         )
-        cap = cv2.VideoCapture(0)
+        cap = camera.open_camera()
         if not cap.isOpened():
             raise RuntimeError("Could not open the camera. Check camera permissions and close other camera apps.")
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # A hint; some camera backends ignore it.
         yield landmarker, cap
+        keep_open = reuse_camera
     finally:
         try:
-            if cap is not None:
-                cap.release()
+            if landmarker is not None:
+                landmarker.close()
+        except BaseException:
+            keep_open = False
+            raise
         finally:
-            try:
-                if landmarker is not None:
-                    landmarker.close()
-            finally:
-                cv2.destroyAllWindows()
+            if not keep_open:
+                try:
+                    camera.close_camera()
+                finally:
+                    cv2.destroyAllWindows()

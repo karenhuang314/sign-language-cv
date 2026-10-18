@@ -1,16 +1,16 @@
 """
 words.py - ASL fingerspelling word challenge mode for SignLingo.
-Spells randomized words up to 5 characters with sequential real-time tracking.
+Presents randomized words up to 5 characters with sequential real-time tracking.
 """
 
 import random
 import time
 import cv2
-import numpy as np
 import mediapipe as mp
 from signlingo.features import hand_to_numbers, guess_letter, load_all_examples, MOTION_LETTERS
-from signlingo.menu_button import MENU_BUTTON, draw_menu_button, install
 from signlingo.motion_recognition import MotionRecognizer
+from signlingo import ui
+from signlingo.menu_button import MENU_BUTTON, draw_menu_button, install
 from signlingo.runtime import mode_camera, require_open_window
 from signlingo.settings import get_settings
 from signlingo.settings_ui import SettingsPanel, limit_frame_rate
@@ -24,6 +24,7 @@ if not LETTERS:
     raise SystemExit("No examples found. Record some with collect_data.py first.")
 LETTERS = sorted(LETTERS + list(MOTION_LETTERS))
 
+# Dictionary of real words between 2 and 5 characters
 DICTIONARY = [
     # 2-letter
     "AI", "AT", "BY", "GO", "HI", "IN", "IS", "IT", "MY", "NO", "ON", "OR", "TO", "UP",
@@ -66,76 +67,55 @@ DICTIONARY = [
     "WHITE", "WOMAN", "WORLD", "YOUTH"
 ]
 
+# Keep only words whose letters exist entirely within your dataset
 VALID_WORDS = [w for w in DICTIONARY if len(w) <= 5 and all(c in LETTERS for c in w)]
 
 
 def get_random_word(previous_word=""):
+    """
+    Returns a random word (<= 5 chars) from the available dataset letters.
+    If no dictionary words match, synthesizes a 2-4 letter combination.
+    """
     if VALID_WORDS:
         candidates = [w for w in VALID_WORDS if w != previous_word] or VALID_WORDS
         return random.choice(candidates)
+
     static_pool = [c for c in LETTERS if c not in MOTION_LETTERS] or LETTERS
     length = random.randint(2, min(4, len(static_pool)))
     return "".join(random.choice(static_pool) for _ in range(length))
 
 
 def draw_word_hud(frame, current_word, char_idx, target, guess, streak, frames_needed, words_done):
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-
-    # Glassmorphism panels
-    cv2.rectangle(overlay, (20, 20), (540, 120), (24, 24, 27), -1)
-    cv2.rectangle(overlay, (20, h - 85), (w - 20, h - 20), (24, 24, 27), -1)
-    cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
-
-    cv2.rectangle(frame, (20, 20), (540, 120), (63, 63, 70), 1)
-    cv2.rectangle(frame, (20, h - 85), (w - 20, h - 20), (63, 63, 70), 1)
-
-    cv2.putText(frame, f"WORD CHALLENGE  (TARGET: {target})", (35, 46),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.48, (161, 161, 170), 1, cv2.LINE_AA)
-
-    start_x = 35
+    """Same look as Single Letter Practice: "Spell: WORD", hold bar, "I see"."""
+    h = frame.shape[0]
+    tip = f"Move: {ui.motion_tip(target)}" if target in MOTION_LETTERS else None
+    spell_width = ui.text_width("Spell: ", 2.0, 5) + sum(ui.text_width(ch, 2.0, 5) + 12 for ch in current_word)
+    ui.top_backdrop(frame, max(spell_width, ui.text_width(tip, 0.8, 2) if tip else 0), 215 if tip else 175)
+    x = 20
+    ui.text(frame, "Spell: ", (x, 70), 2.0, ui.WHITE, 5)
+    x += ui.text_width("Spell: ", 2.0, 5)
     for i, ch in enumerate(current_word):
         if i < char_idx:
-            color = (34, 197, 94)      # Completed: Green
+            color = ui.GREEN       # done
         elif i == char_idx:
-            color = (0, 255, 255)      # Active Target: Yellow
+            color = ui.YELLOW      # sign this one now
         else:
-            color = (113, 113, 122)    # Upcoming: Dim Gray
-        cv2.putText(frame, ch, (start_x + (i * 42), 86),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.15, color, 3, cv2.LINE_AA)
+            color = ui.DIM         # still to come
+        ui.text(frame, ch, (x, 70), 2.0, color, 5)
+        x += ui.text_width(ch, 2.0, 5) + 12
 
-    status_text = f"SEE: {guess}" if guess else "SEE: ..."
-    status_color = (34, 197, 94) if (guess == target and streak > 0) else (161, 161, 170)
-    cv2.putText(frame, status_text, (400, 86),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.65, status_color, 2, cv2.LINE_AA)
+    ui.hold_bar(frame, streak, frames_needed)
+    ui.text(frame, f"I see: {guess or '?'}", (20, 155), 1.0, ui.YELLOW, 2)
+    if tip:
+        ui.text(frame, tip, (20, 195), 0.8, ui.TIP, 2)
 
-    bar_x, bar_y, bar_w, bar_h = 35, 96, 470, 7
-    fill_ratio = min(max(streak / frames_needed, 0.0), 1.0)
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (51, 65, 85), -1)
-    if fill_ratio > 0.0:
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + int(bar_w * fill_ratio), bar_y + bar_h), (34, 197, 94), -1)
-
-    footer_text = f"WORDS SPELLED: {words_done}   |   CURRENT: {current_word}"
-    cv2.putText(frame, footer_text, (35, h - 55),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
-    controls = "Press [ESC] or click MAIN MENU to go back  |  [SPACE] Skip Word"
-    cv2.putText(frame, controls, (35, h - 32),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.42, (161, 161, 170), 1, cv2.LINE_AA)
-
-    draw_menu_button(frame)
+    ui.help_line(frame, f"Words spelled: {words_done}   SPACE = new word   ESC = menu")
     return frame
 
 
 def draw_success_card(frame, word):
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-    box_w, box_h = 440, 110
-    x1, y1 = (w - box_w) // 2, (h - box_h) // 2
-    cv2.rectangle(overlay, (x1, y1), (x1 + box_w, y1 + box_h), (20, 83, 45), -1)
-    cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
-    cv2.rectangle(frame, (x1, y1), (x1 + box_w, y1 + box_h), (34, 197, 94), 2)
-    cv2.putText(frame, f"SPELLED '{word}'!", (x1 + 35, y1 + 70),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.25, (255, 255, 255), 3, cv2.LINE_AA)
+    h = frame.shape[0]
+    ui.centered(frame, f"Spelled {word}!", h // 2, 2.5, ui.GREEN, 6, boxed=True)
     return frame
 
 
@@ -154,7 +134,8 @@ def run_words_mode():
     just_spelled = ""
 
     with mode_camera() as (landmarker, cap):
-        install("SignLingo", settings_panel)
+        ui.open_window()
+        install(ui.WINDOW, settings_panel)
         while cap.isOpened():
             started = time.monotonic()
             require_open_window()
@@ -168,6 +149,7 @@ def run_words_mode():
                 break
             if preferences.selfie:
                 frame = cv2.flip(frame, 1)
+            frame = ui.fit(frame)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             timestamp_ms = max(int((time.monotonic() - start_time) * 1000), last_timestamp_ms + 1)
@@ -180,10 +162,7 @@ def run_words_mode():
             hand = result.hand_landmarks[0] if result.hand_landmarks else None
             if hand:
                 if preferences.show_landmarks:
-                    for p in hand:
-                        cx, cy = int(p.x * w), int(p.y * h)
-                        cv2.circle(frame, (cx, cy), 5, (16, 185, 129), 1, cv2.LINE_AA)
-                        cv2.circle(frame, (cx, cy), 2, (255, 255, 255), -1, cv2.LINE_AA)
+                    ui.hand_dots(frame, hand)
                 guess, _ = guess_letter(hand_to_numbers(hand), examples)
             motion_letter = motion_tracker.update(
                 hand if not settings_panel.is_open else None, time.monotonic(), w / h)
@@ -215,7 +194,7 @@ def run_words_mode():
             draw_menu_button(frame)
             settings_panel.draw(frame)
             require_open_window()
-            cv2.imshow("SignLingo", frame)
+            ui.show(frame)
             key = cv2.waitKey(1) & 0xFF
             require_open_window()
             if settings_panel.handle_key(key):

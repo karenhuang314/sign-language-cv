@@ -35,10 +35,10 @@ def mirror(numbers):
     return [-v if i % 2 == 0 else v for i, v in enumerate(numbers)]
 
 
-def load_all_examples(verbose=True):
-    """Load every data/examples_*.json made with this recipe (skips broken files)."""
+def load_all_examples(verbose=True, data_dir=None):
+    """Load compatible examples; optionally supply an absolute data directory."""
     examples = []
-    for path in sorted(glob.glob(os.path.join(DATA_DIR, "examples_*.json"))):
+    for path in sorted(glob.glob(os.path.join(data_dir or DATA_DIR, "examples_*.json"))):
         try:
             with open(path) as f:
                 found = [e for e in json.load(f)

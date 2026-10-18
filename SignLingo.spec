@@ -1,27 +1,48 @@
-# SignLingo.spec - recipe PyInstaller uses to build the app (run ./build_app.sh)
+# Build on the target OS: python -m PyInstaller --noconfirm SignLingo.spec
+# Folder distribution first: easier to inspect and validate native dependencies.
+from pathlib import Path
 import sys
 from PyInstaller.utils.hooks import collect_all
 
-mp_datas, mp_binaries, mp_hidden = collect_all("mediapipe")
+root = Path(SPECPATH)
+mp_data, mp_binaries, mp_imports = collect_all('mediapipe')
+assets = [(str(root / 'hand_landmarker.task'), '.')]
+assets += [(str(path), 'data') for path in sorted((root / 'data').glob('examples_*.json'))]
+assets += [(str(root / 'signlingo' / 'assets'), 'signlingo/assets')]
 
 a = Analysis(
-    ["main.py"],
-    datas=[("hand_landmarker.task", "."), ("data/*.json", "data")] + mp_datas,
+    [str(root / 'desktop_app.py')],
+    pathex=[str(root)],
     binaries=mp_binaries,
-    hiddenimports=["practice", "features", "motion_recognition"] + mp_hidden,
-    excludes=["gradio", "pandas"],
+    datas=assets + mp_data,
+    hiddenimports=mp_imports,
+    hookspath=[],
+    excludes=['gradio', 'PyQt5', 'PyQt6', 'PySide2', 'tkinter',
+              'torch', 'tensorflow', 'IPython', 'notebook', 'pytest'],
+    noarchive=False,
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="SignLingo", console=False)
-coll = COLLECT(exe, a.binaries, a.datas, name="SignLingo")
-
-if sys.platform == "darwin":
+exe = EXE(
+    pyz, a.scripts, [],
+    exclude_binaries=True,
+    name='SignLingo',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=False,
+    argv_emulation=False,
+)
+collection = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='SignLingo')
+if sys.platform == 'darwin':
     app = BUNDLE(
-        coll,
-        name="SignLingo.app",
-        bundle_identifier="com.signlingo.app",
+        collection,
+        name='SignLingo.app',
+        bundle_identifier='org.signlingo.desktop',
         info_plist={
-            # macOS only lets an app use the camera if it says why
-            "NSCameraUsageDescription": "SignLingo uses the camera to see your hand signs.",
+            'CFBundleDisplayName': 'SignLingo',
+            'CFBundleShortVersionString': '0.1.0',
+            'NSCameraUsageDescription': 'SignLingo uses your camera for local fingerspelling practice. Video is not uploaded.',
+            'NSHighResolutionCapable': True,
         },
     )

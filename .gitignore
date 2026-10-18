@@ -13,3 +13,11 @@ dist/
 # Gradio / Web caches
 .gradio/
 .DS_Store
+*_backup.json
+*.zip
+*.bundle
+.venv*/
+build/
+dist/
+state/desktop-install.log
+state/desktop-build.log

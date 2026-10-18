@@ -1,4 +1,4 @@
-# Sign Language CV: ASL fingerspelling practice
+# SignLingo: ASL fingerspelling practice
 
 A webcam app that recognizes American Sign Language fingerspelling letters
 (A to Z, with J and Z recognized from movement) and a practice game that
@@ -25,10 +25,28 @@ Python 3.10 to 3.12.
 pip install -r requirements.txt
 ```
 
+## SignLingo desktop app (PySide6)
+
+A standalone desktop interface is available alongside the existing website:
+
+```bash
+python -m pip install -r requirements-desktop.txt
+python desktop_app.py
+```
+
+It offers local live recognition, letter practice, J/Z tracking, score/progress,
+start/stop camera controls, and low-power mode. **No Gradio, browser, server, or
+video upload is required.** Preferences and an all-time practice count are saved
+per user; reference examples are not modified.
+
+A Windows folder build can be made with `SignLingo.spec`; macOS needs a separate
+build on a Mac. See [desktop setup and packaging](docs/SIGNLINGO_DESKTOP.md).
+
 ## Run
 
 | Command | What it does |
 |---|---|
+| `python desktop_app.py` | **SignLingo desktop**: native Qt window with local recognition and practice. |
 | `python app.py` | **Website** (Gradio): open the link it prints, allow the camera, press Record. Live tab shows the letter; Practice tab is the game with a letter picker. |
 | `python practice.py` | Practice game: make the letter shown, hold it, get "Correct!". SPACE skips, ESC quits. |
 | `python practice.py B` | Focus mode: practice only B (or press a letter key while running; `0` goes back to random). Shows how many times it worked and how long the last one took. |
@@ -41,6 +59,11 @@ pip install -r requirements.txt
 
 | File | What it is |
 |---|---|
+| `desktop_app.py` | SignLingo desktop entry point |
+| `signlingo/` | Qt interface, camera worker, recognition and practice controller |
+| `SignLingo.spec` | Windows/macOS PyInstaller packaging configuration |
+| `requirements-desktop.txt` | Desktop dependencies, without Gradio |
+| `test_desktop.py` | Camera-free desktop and practice tests |
 | `app.py` | Website version (Gradio): Live and Practice tabs |
 | `camera.py` | Live classifier with recording |
 | `practice.py` | Practice game (the demo) |

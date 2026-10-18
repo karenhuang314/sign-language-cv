@@ -40,6 +40,13 @@ files from a source checkout or edit files inside a packaged build.
 
 ## Using the app
 
+The camera fills the window and the game is drawn on the video: **Make: B**,
+the green hold bar, **I see: B**, and a big green **Correct!** Every control
+below is in the sidebar that opens with the gear button (top right). Keyboard:
+a letter key practices that letter, **0** goes back to random.
+(`signlingo/camera_window.py` is this look; the original card layout is still
+in `signlingo/window.py`.)
+
 1. Choose **Live recognition** or **Letter practice**.
 2. Choose a practice target or **Random**. Only static letters with saved
    examples, plus experimental J/Z, are offered.

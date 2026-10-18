@@ -49,9 +49,9 @@ def main():
                 print(message)
             return 0
 
-        from signlingo.window import SignLingoWindow
+        from signlingo.camera_window import CameraWindow
         app.setWindowIcon(QIcon(str(RESOURCE_ROOT / 'signlingo' / 'assets' / 'signlingo.svg')))
-        window = SignLingoWindow(examples)
+        window = CameraWindow(examples)
         window.show()
         if args.smoke_test:
             QTimer.singleShot(500, window.close)

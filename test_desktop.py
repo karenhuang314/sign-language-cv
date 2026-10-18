@@ -20,6 +20,7 @@ if HAS_QT:
     from signlingo.camera_worker import CameraWorker, FrameMailbox
     from signlingo.recognition import FrameResult, RecognitionEngine, load_examples
     from signlingo.window import SignLingoWindow
+    from signlingo.camera_window import CameraWindow
 
 
 class PracticeTests(unittest.TestCase):
@@ -186,6 +187,30 @@ class DesktopTests(unittest.TestCase):
                 window.close()
                 self.app.processEvents()
             self.assertTrue(settings.value('camera/low_power', False, type=bool))
+
+    def test_camera_window_overlay_and_sidebar(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = QSettings(str(Path(directory) / 'settings.ini'), QSettings.Format.IniFormat)
+            window = CameraWindow([{'letter': 'B', 'numbers': [0]*42}], settings=settings)
+            try:
+                window.show()
+                self.app.processEvents()
+                self.assertIsNone(window.worker)  # Never silently open a webcam.
+                self.assertFalse(window.sidebar.isVisible())
+                self.assertTrue(window.big_start.isVisible())
+                window.gear.click()
+                self.assertTrue(window.sidebar.isVisible())
+                window.focus.setCurrentText('B')
+                window.mailbox.publish(self.result('B'))
+                window._poll()
+                self.assertEqual(window.detected.text(), 'B')
+                self.assertIn(('big', 'Make: B'), [(k, t) for k, t, _ in window.camera_view.overlay])
+                window.mode.setCurrentText('Live recognition')
+                window._poll()
+                self.assertNotIn('Make: B', [t for _, t, _ in window.camera_view.overlay])
+            finally:
+                window.close()
+                self.app.processEvents()
 
     def test_data_loads_outside_project_directory(self):
         previous = Path.cwd()

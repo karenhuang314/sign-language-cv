@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
-from features import MOTION_LETTERS
+from .features import MOTION_LETTERS
 from .window import STYLE, SignLingoWindow, caption
 
 WHITE, GREEN, YELLOW = QColor("#ffffff"), QColor("#22c55e"), QColor("#ffd23f")

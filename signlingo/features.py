@@ -16,6 +16,8 @@ import json
 import math
 import os
 
+from .paths import DATA_DIR
+
 KNN_K = 5
 MAX_NEIGHBOR_DISTANCE = 15.0  # if even the best match is further than this, say "unknown"
 
@@ -23,7 +25,6 @@ MAX_NEIGHBOR_DISTANCE = 15.0  # if even the best match is further than this, say
 FINGERTIPS = {4, 8, 12, 16, 20}
 NUM_NUMBERS = 42  # 21 points x (x, y)
 MOTION_LETTERS = ("J", "Z")  # recognized from movement (motion_recognition.py)
-DATA_DIR = "data"            # all examples_*.json files live here
 # A left hand is a mirror image of a right hand. Mirroring = flipping every
 # x number (the wrist is at x=0). So each saved example also counts as the
 # other hand, and one recording works for both hands.
@@ -94,7 +95,7 @@ def guess_letter(numbers, examples, k=KNN_K):
     return best, votes[best] / len(top_k)
 
 
-# Quick check:  python features.py
+# Quick check:  python -m signlingo.features
 if __name__ == "__main__":
     from types import SimpleNamespace as Point
     import random

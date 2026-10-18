@@ -9,6 +9,7 @@ venv/
 build/
 dist/
 *.spec
+!packaging/SignLingo.spec
 
 # Gradio / Web caches
 .gradio/
@@ -17,7 +18,5 @@ dist/
 *.zip
 *.bundle
 .venv*/
-build/
-dist/
 state/desktop-install.log
 state/desktop-build.log

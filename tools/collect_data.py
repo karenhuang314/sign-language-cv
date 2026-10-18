@@ -1,7 +1,7 @@
 """
 collect_data.py - record more examples for any still letter.
 
-Run:  python collect_data.py jeffrey_left
+Run:  python -m tools.collect_data jeffrey_left
   - The name after the script picks the file: data/examples_jeffrey_left.json.
     Use a new name for each person / hand, e.g. karen_left, jeffrey_right.
   - Make a letter, then press its key. Each press saves ONE example.
@@ -23,7 +23,8 @@ import cv2
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from features import hand_to_numbers, DATA_DIR
+from signlingo.features import hand_to_numbers
+from signlingo.paths import DATA_DIR, MODEL_PATH
 
 LETTERS = "ABCDEFGHIKLMNOPQRSTUVWXY"   # every letter except J and Z
 name = sys.argv[1] if len(sys.argv) > 1 else "new"
@@ -50,7 +51,7 @@ def count(letter):
 # ---------- Same hand finder as camera.py ----------
 landmarker = vision.HandLandmarker.create_from_options(
     vision.HandLandmarkerOptions(
-        base_options=python.BaseOptions(model_asset_path="hand_landmarker.task"),
+        base_options=python.BaseOptions(model_asset_path=str(MODEL_PATH)),
         running_mode=vision.RunningMode.VIDEO,
         num_hands=1,
     )

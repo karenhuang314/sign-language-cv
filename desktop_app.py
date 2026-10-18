@@ -18,10 +18,11 @@ def main():
     from PySide6.QtCore import QCoreApplication, QStandardPaths, QTimer
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox
+    from signlingo import __version__
 
     QCoreApplication.setOrganizationName('SignLingo')
     QCoreApplication.setApplicationName('SignLingo')
-    QCoreApplication.setApplicationVersion('0.1.0')
+    QCoreApplication.setApplicationVersion(__version__)
     app = QApplication(sys.argv[:1])
     log_dir = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -31,7 +32,8 @@ def main():
                         format='%(asctime)s %(levelname)s %(message)s')
 
     try:
-        from signlingo.recognition import RESOURCE_ROOT, RecognitionEngine, load_examples
+        from signlingo.paths import ASSETS_DIR
+        from signlingo.recognition import RecognitionEngine, load_examples
         examples = load_examples()
         logging.info('Loaded %d reference vectors (includes mirrors)', len(examples))
         if args.self_test:
@@ -50,7 +52,7 @@ def main():
             return 0
 
         from signlingo.camera_window import CameraWindow
-        app.setWindowIcon(QIcon(str(RESOURCE_ROOT / 'signlingo' / 'assets' / 'signlingo.svg')))
+        app.setWindowIcon(QIcon(str(ASSETS_DIR / 'signlingo.svg')))
         window = CameraWindow(examples)
         window.show()
         if args.smoke_test:

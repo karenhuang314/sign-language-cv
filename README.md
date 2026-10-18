@@ -9,13 +9,13 @@ This is a **fingerspelling practice tool**, not an app that teaches ASL.
 ## How it works
 
 1. **OpenCV** reads the webcam.
-2. **MediaPipe** finds 21 points on your hand (`hand_landmarker.task`).
-3. `features.py` turns those points into 42 numbers that don't depend on
+2. **MediaPipe** finds 21 points on your hand (`models/hand_landmarker.task`).
+3. `signlingo/features.py` turns those points into 42 numbers that don't depend on
    where your hand is or how big it looks.
 4. The app compares them with saved examples in `data/` and the 5 closest
    examples vote on the letter (k-nearest neighbours, no training step).
 5. J and Z are recognized from the path your finger draws
-   (`motion_recognition.py`).
+   (`signlingo/motion_recognition.py`).
 
 ## Setup
 
@@ -39,47 +39,66 @@ start/stop camera controls, and low-power mode. **No Gradio, browser, server, or
 video upload is required.** Preferences and an all-time practice count are saved
 per user; reference examples are not modified.
 
-A Windows folder build can be made with `SignLingo.spec`; macOS needs a separate
-build on a Mac. See [desktop setup and packaging](docs/SIGNLINGO_DESKTOP.md).
+**Mac app:** `./packaging/macos/build_app.sh` (inside the desktop venv) builds
+`dist/SignLingo.app` and `dist/SignLingo-<version>.dmg`, a standalone download
+that needs no Python. See [Share the Mac app](docs/SIGNLINGO_DESKTOP.md#share-the-mac-app).
+The same spec also builds a Windows folder on Windows. See
+[desktop setup and packaging](docs/SIGNLINGO_DESKTOP.md).
 
 ## Run
+
+Run everything from the repo root.
 
 | Command | What it does |
 |---|---|
 | `python desktop_app.py` | **SignLingo desktop**: native Qt window with local recognition and practice. |
-| `python app.py` | **Website** (Gradio): open the link it prints, allow the camera, press Record. Live tab shows the letter; Practice tab is the game with a letter picker. |
-| `python practice.py` | Practice game: make the letter shown, hold it, get "Correct!". SPACE skips, ESC quits. |
-| `python practice.py B` | Focus mode: practice only B (or press a letter key while running; `0` goes back to random). Shows how many times it worked and how long the last one took. |
-| `python camera.py` | Live classifier: shows the letter it sees. Press a letter key to record 20 examples (saved to `data/examples_camera.json`). ESC quits. |
-| `python collect_data.py yourname_left` | Record examples one key press at a time into `data/examples_yourname_left.json`. `1` undoes, ESC quits. |
-| `python examples_tool.py count` | How many examples each letter has. |
-| `python -m unittest test_motion_recognition` | Tests for J/Z motion (no webcam needed). |
+| `python -m web.app` | **Website** (Gradio): open the link it prints, allow the camera, press Record. Live tab shows the letter; Practice tab is the game with a letter picker. |
+| `python -m tools.practice` | Practice game: make the letter shown, hold it, get "Correct!". SPACE skips, ESC quits. |
+| `python -m tools.practice B` | Focus mode: practice only B (or press a letter key while running; `0` goes back to random). Shows how many times it worked and how long the last one took. |
+| `python -m tools.camera` | Live classifier: shows the letter it sees. Press a letter key to record 20 examples (saved to `data/examples_camera.json`). ESC quits. |
+| `python -m tools.collect_data yourname_left` | Record examples one key press at a time into `data/examples_yourname_left.json`. `1` undoes, ESC quits. |
+| `python -m tools.examples_tool count` | How many examples each letter has. |
+| `python -m unittest discover tests` | All tests, no webcam needed (the desktop tests need PySide6). |
+| `./packaging/macos/build_app.sh` | Build the Mac app and the `.dmg` to share (checks the app before packaging it). |
 
 ## Files
 
-| File | What it is |
-|---|---|
-| `desktop_app.py` | SignLingo desktop entry point |
-| `signlingo/` | Qt interface, camera worker, recognition and practice controller |
-| `SignLingo.spec` | Windows/macOS PyInstaller packaging configuration |
-| `requirements-desktop.txt` | Desktop dependencies, without Gradio |
-| `test_desktop.py` | Camera-free desktop and practice tests |
-| `app.py` | Website version (Gradio): Live and Practice tabs |
-| `camera.py` | Live classifier with recording |
-| `practice.py` | Practice game (the demo) |
-| `collect_data.py` | Recorder, one file per person/hand |
-| `features.py` | Shared hand-to-numbers recipe and letter guesser |
-| `motion_recognition.py` | J and Z from finger movement |
-| `test_motion_recognition.py` | Tests for the motion code |
-| `examples_tool.py` | Count or remove saved examples |
-| `hand_landmarker.task` | MediaPipe hand model |
-| `data/examples_karen.json` | 560 webcam examples, 24 still letters |
-| `data/examples_dataset.json` | 726 examples made from the Kaggle ASL dataset |
-| `docs/plan.md` | Our mentor's step-by-step guide |
+```
+desktop_app.py          SignLingo desktop entry point
+signlingo/              the shared package
+  features.py           hand -> 42 numbers, and the k-NN letter guesser
+  motion_recognition.py J and Z from finger movement
+  paths.py              where the model and data live (works from any folder)
+  recognition.py        frame -> letter, used by the desktop app
+  practice.py           practice game rules (desktop)
+  camera_worker.py      camera thread (desktop)
+  camera_window.py      camera-first desktop look with the gear sidebar
+  window.py             original card-layout desktop window
+  assets/               app icon
+web/app.py              website version (Gradio): Live and Practice tabs
+tools/                  OpenCV scripts
+  camera.py             live classifier with recording
+  practice.py           practice game (the original demo)
+  collect_data.py       recorder, one file per person/hand
+  examples_tool.py      count or remove saved examples
+tests/                  camera-free tests (desktop + motion)
+models/
+  hand_landmarker.task  MediaPipe hand model
+data/
+  examples_karen.json   560 webcam examples, 24 still letters
+  examples_dataset.json 726 examples made from the Kaggle ASL dataset
+packaging/
+  SignLingo.spec        PyInstaller recipe (Mac .app, or a Windows folder)
+  macos/                Mac build script, app icon, first-open instructions
+docs/                   desktop guide, and our mentor's step-by-step plan
+requirements.txt          website + scripts (includes Gradio)
+requirements-desktop.txt  desktop app only
+requirements-build.txt    desktop app + PyInstaller
+```
 
 ## Credits
 
-- **Karen** (karenhuang314): live classifier (`camera.py`): the
+- **Karen** (karenhuang314): live classifier (`tools/camera.py`): the
   42-number weighted recipe, k-NN voting, recording, drawing; recorded the
   webcam examples (`data/examples_karen.json`).
 - **Etinosa** (EOgbeide1): J and Z motion recognition and its tests,

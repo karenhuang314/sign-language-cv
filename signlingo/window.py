@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from features import MOTION_LETTERS
+from .features import MOTION_LETTERS
 from .camera_worker import CameraWorker, FrameMailbox
 from .practice import PracticeController
 

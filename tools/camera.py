@@ -1,7 +1,7 @@
 """
 camera.py - live ASL fingerspelling classifier (by Karen; J/Z motion by Etinosa).
 
-Run:  python camera.py
+Run:  python -m tools.camera
   - Show a letter and the window says what it sees. J and Z are recognized
     from movement (motion_recognition.py).
   - Press a letter key (not J/Z) to record 20 examples of that letter.
@@ -16,10 +16,11 @@ import cv2
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from motion_recognition import MotionRecognizer
+from signlingo.motion_recognition import MotionRecognizer
 # The recipe (hand_to_numbers) and the k-NN guesser live in features.py,
 # so camera.py, practice.py and collect_data.py always agree.
-from features import hand_to_numbers, guess_letter, load_all_examples, DATA_DIR, FINGERTIPS
+from signlingo.features import hand_to_numbers, guess_letter, load_all_examples, FINGERTIPS
+from signlingo.paths import DATA_DIR, MODEL_PATH
 
 RECORD_FILE = os.path.join(DATA_DIR, "examples_camera.json")
 TARGET_SAMPLES = 20
@@ -37,7 +38,7 @@ def save_examples():
         json.dump(recorded, f, indent=2)
 
 # ----------------- Step 4: MediaPipe Setup -----------------
-base_options = python.BaseOptions(model_asset_path="hand_landmarker.task")
+base_options = python.BaseOptions(model_asset_path=str(MODEL_PATH))
 options = vision.HandLandmarkerOptions(
     base_options=base_options,
     running_mode=vision.RunningMode.VIDEO,

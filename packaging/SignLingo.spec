@@ -1,12 +1,15 @@
-# Build on the target OS: python -m PyInstaller --noconfirm SignLingo.spec
+# Build on the target OS, from the repo root: python -m PyInstaller --noconfirm packaging/SignLingo.spec
 # Folder distribution first: easier to inspect and validate native dependencies.
 from pathlib import Path
+import re
 import sys
 from PyInstaller.utils.hooks import collect_all
 
-root = Path(SPECPATH)
+root = Path(SPECPATH).parent  # this spec lives in packaging/
+# One version number for the app and the window: signlingo/__init__.py
+version = re.search(r'__version__ = "(.+?)"', (root / 'signlingo' / '__init__.py').read_text()).group(1)
 mp_data, mp_binaries, mp_imports = collect_all('mediapipe')
-assets = [(str(root / 'hand_landmarker.task'), '.')]
+assets = [(str(root / 'models' / 'hand_landmarker.task'), 'models')]
 assets += [(str(path), 'data') for path in sorted((root / 'data').glob('examples_*.json'))]
 assets += [(str(root / 'signlingo' / 'assets'), 'signlingo/assets')]
 
@@ -38,10 +41,14 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         collection,
         name='SignLingo.app',
+        icon=str(root / 'packaging' / 'macos' / 'SignLingo.icns'),
         bundle_identifier='org.signlingo.desktop',
         info_plist={
             'CFBundleDisplayName': 'SignLingo',
-            'CFBundleShortVersionString': '0.1.0',
+            'CFBundleShortVersionString': version,
+            'CFBundleVersion': version,
+            # The bundled numpy and Qt wheels are built for macOS 14 (Sonoma) and newer.
+            'LSMinimumSystemVersion': '14.0',
             'NSCameraUsageDescription': 'SignLingo uses your camera for local fingerspelling practice. Video is not uploaded.',
             'NSHighResolutionCapable': True,
         },

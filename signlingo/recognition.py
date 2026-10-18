@@ -1,7 +1,6 @@
 """Local frame recognition; no Qt, web server, or camera capture side effects."""
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import cv2
 import mediapipe as mp
@@ -9,12 +8,9 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from features import FINGERTIPS, guess_letter, hand_to_numbers, load_all_examples
-from motion_recognition import MotionRecognizer
-
-# PyInstaller places bundled resources relative to the entry point; __file__ is
-# also resolved within its bundle. This works in source and folder-based builds.
-RESOURCE_ROOT = Path(__file__).resolve().parent.parent
+from .features import FINGERTIPS, guess_letter, hand_to_numbers, load_all_examples
+from .motion_recognition import MotionRecognizer
+from .paths import DATA_DIR, MODEL_PATH
 
 HAND_CONNECTIONS = (
     (0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
@@ -24,7 +20,7 @@ HAND_CONNECTIONS = (
 
 
 def load_examples():
-    examples = load_all_examples(verbose=False, data_dir=str(RESOURCE_ROOT / "data"))
+    examples = load_all_examples(verbose=False, data_dir=str(DATA_DIR))
     if not examples:
         raise RuntimeError("No compatible examples found in the bundled data folder.")
     return examples
@@ -55,7 +51,7 @@ class RecognitionEngine:
 
     @staticmethod
     def _create_detector():
-        model = RESOURCE_ROOT / "hand_landmarker.task"
+        model = MODEL_PATH
         if not model.is_file():
             raise FileNotFoundError(f"Hand model missing: {model}")
         return vision.HandLandmarker.create_from_options(

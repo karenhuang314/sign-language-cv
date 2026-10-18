@@ -2,7 +2,7 @@
 app.py - the website version of the project, built with Gradio.
 
 Run:  pip install -r requirements.txt
-      python app.py
+      python -m web.app
 Then open the link it prints (http://127.0.0.1:7860) and allow the camera.
 
 Two tabs:
@@ -31,8 +31,9 @@ import gradio as gr
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from features import hand_to_numbers, guess_letter, load_all_examples, MOTION_LETTERS
-from motion_recognition import MotionRecognizer
+from signlingo.features import hand_to_numbers, guess_letter, load_all_examples, MOTION_LETTERS
+from signlingo.paths import MODEL_PATH
+from signlingo.motion_recognition import MotionRecognizer
 
 FRAMES_NEEDED = 6       # matching frames in a row for "Correct!" (about 0.6 s)
 CORRECT_SECONDS = 1.5   # how long "Correct!" stays up
@@ -47,7 +48,7 @@ print("Letters:", " ".join(LETTERS))
 # visitors can't get mixed up. The lock lets only one frame use it at a time.
 landmarker = vision.HandLandmarker.create_from_options(
     vision.HandLandmarkerOptions(
-        base_options=python.BaseOptions(model_asset_path="hand_landmarker.task"),
+        base_options=python.BaseOptions(model_asset_path=str(MODEL_PATH)),
         running_mode=vision.RunningMode.IMAGE,
         num_hands=1,
     )

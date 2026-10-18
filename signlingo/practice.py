@@ -2,7 +2,7 @@
 
 import random
 
-from features import MOTION_LETTERS
+from .features import MOTION_LETTERS
 
 HOLD_SECONDS = 0.6
 FEEDBACK_SECONDS = 1.5

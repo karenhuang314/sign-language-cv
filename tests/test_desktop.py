@@ -1,4 +1,4 @@
-"""Camera-free tests. Use the desktop environment: python -m unittest test_desktop"""
+"""Camera-free tests. Use the desktop environment: python -m unittest discover tests"""
 
 import importlib.util
 import os

@@ -34,7 +34,7 @@ If PowerShell blocks activation, invoke `.venv-desktop\Scripts\python.exe`
 directly instead. A local development environment has already been created on
 this Windows machine; its installed dependencies are sufficient to run the app.
 
-The app uses `hand_landmarker.task` and `data/examples_*.json` relative to the
+The app uses `models/hand_landmarker.task` and `data/examples_*.json` relative to the
 application resources, not the terminal's current folder. Do not remove these
 files from a source checkout or edit files inside a packaged build.
 
@@ -104,7 +104,7 @@ its native read call blocks; the app does not forcibly terminate native code.
 ## Tests without a camera
 
 ```bash
-python -m unittest test_desktop test_motion_recognition
+python -m unittest discover tests
 python desktop_app.py --self-test
 python desktop_app.py --smoke-test
 ```
@@ -120,13 +120,41 @@ mailbox behavior, worker cleanup/failure, RGB conversion, mirroring, monotonic
 model timestamps, resource lookup, and UI controls/settings. Physical webcam
 behavior and recognition accuracy still require manual testing.
 
+## Share the Mac app
+
+From the repo root, inside the activated desktop venv:
+
+```bash
+./packaging/macos/build_app.sh
+```
+
+It installs the pinned build tools, builds `dist/SignLingo.app`, checks the
+signature and runs `--self-test` on the finished app, then makes
+`dist/SignLingo-<version>.dmg`. Share the DMG. It holds the app, a shortcut to
+Applications to drag it onto, and `How to open SignLingo.txt`. Nobody needs
+Python installed.
+
+- **Who can run it:** macOS 14 (Sonoma) or newer, on Apple silicon (M1 or
+  later). The bundled numpy and Qt need macOS 14. The build matches the Mac
+  that made it, and MediaPipe ships no Intel-and-Apple-silicon (universal)
+  build, so an Intel Mac would need its own build made on an Intel Mac.
+- **First open:** the app is not signed with an Apple Developer ID, so macOS
+  warns the first time and people click **Open Anyway** in System Settings >
+  Privacy & Security. The steps are in
+  `packaging/macos/How to open SignLingo.txt`, which ships inside the DMG.
+  Avoiding the warning needs a paid Apple Developer account plus notarization.
+- **Version:** change `__version__` in `signlingo/__init__.py`. The window,
+  Info.plist and DMG name all read it.
+- **Icon:** after editing `signlingo/assets/signlingo.svg`, run
+  `python packaging/macos/make_icon.py` to rebuild `SignLingo.icns`.
+
 ## Package on Windows or Mac
 
 Install packaging dependencies in a clean environment for the target OS:
 
 ```bash
 python -m pip install -r requirements-build.txt
-python -m PyInstaller --noconfirm SignLingo.spec
+python -m PyInstaller --noconfirm packaging/SignLingo.spec
 ```
 
 The spec bundles the hand model, only `examples_*.json` (not the dataset ZIP),
@@ -182,7 +210,7 @@ dist/SignLingo.app/Contents/MacOS/SignLingo --self-test
 - **Mac camera denial:** enable permission for the terminal/Python when running
   source, or SignLingo when running the packaged app. Verify the app's Info.plist
   includes the camera description. Do not disable OS security globally.
-- **Missing model/data:** rebuild with `SignLingo.spec`; retain the complete build.
+- **Missing model/data:** rebuild with `packaging/SignLingo.spec`; retain the complete build.
 - **Dependency install failure:** use a Python/processor combination supported
   by PySide6 and MediaPipe. Recheck Intel Mac availability in particular.
 - **Slow movement recognition:** use better lighting and slower gestures. Static

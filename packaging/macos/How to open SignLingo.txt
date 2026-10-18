@@ -1,0 +1,27 @@
+How to open SignLingo
+=====================
+
+1. Drag SignLingo into the Applications folder (in this window).
+
+2. Open Applications and double-click SignLingo.
+
+   The first time, your Mac says it can't check SignLingo for malware.
+   That's because SignLingo is a free student project, not one registered
+   with Apple. It runs only on your computer and never uploads video.
+
+   macOS 15 (Sequoia) and newer:
+     - Click "Done" on the warning.
+     - Open System Settings > Privacy & Security.
+     - Scroll down to "SignLingo was blocked..." and click "Open Anyway".
+     - Enter your password, then click "Open Anyway" again.
+
+   macOS 14 (Sonoma):
+     - Right-click (or Control-click) SignLingo and choose "Open".
+     - Click "Open" in the box that appears.
+
+   You only do this once. After that SignLingo opens normally.
+
+3. When SignLingo asks to use the camera, click "Allow".
+   Changed your mind later? System Settings > Privacy & Security > Camera.
+
+Needs macOS 14 or newer on a Mac with Apple silicon (M1 or later).

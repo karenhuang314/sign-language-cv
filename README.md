@@ -32,19 +32,21 @@ Run these from the project folder.
 | Command | What it does |
 |---|---|
 | `python main.py` | **SignLingo**: start menu. `1` Single Letter Practice, `2` Word Challenge, ESC quits. If you finish or leave a mode it comes back to this menu. |
-| `python -m signlingo.practice` | Letter practice on its own: make the letter shown, hold it, get "Correct!". SPACE skips, ESC quits. |
+| `python -m signlingo.practice` | Letter practice on its own: make the letter shown (a picture in the bottom-right shows how), hold it, get "Correct!". SPACE skips, ESC quits. |
 | `python -m signlingo.practice B` | Focus mode: practice only B (or press a letter key while running; `0` goes back to random). |
 | `python -m signlingo.words` | Word Challenge on its own: spell random words up to 5 letters. |
 | `python -m tools.collect_data yourname_left` | Record examples one key press at a time into `data/examples_yourname_left.json`. `1` undoes, ESC quits. |
 | `python -m tools.examples_tool count` | How many examples each letter has. |
+| `python -m tools.make_sign_images chart.png` | Cut an ASL alphabet chart into the per-letter pictures in `assets/signs/`. |
 | `python -m unittest discover tests` | Tests for J/Z, settings, both modes, and window cleanup (no webcam needed). |
 | `./packaging/build_app.sh` | Build the Mac app (`dist/SignLingo.app`) and `SignLingo-mac.zip` to share. |
 
 ## Camera settings and closing the app
 
 Click the small **gear icon** in the upper-right corner of the menu, Single
-Letter Practice, or Word Challenge. The existing layout and two modes are
-unchanged. You can also press **comma (`,`)** to open/close settings.
+Letter Practice, or Word Challenge (beside Main Menu in the practice modes).
+All screens use the shared full-screen style. You can also press
+**comma (`,`)** to open/close settings.
 
 - **Low-power mode:** caps the processing loop at approximately 12 FPS. Actual
   performance depends on the camera and computer. Existing frame-based holds
@@ -63,8 +65,9 @@ Settings apply immediately, are shared by both modes, and are saved per user:
 
 Practice progression pauses while settings are open. Closing the native window
 with its **X/red close button quits the app**, rather than reopening the menu.
-Camera and model resources are released on exit. The main menu does not request
-camera access until you choose a mode.
+Camera and model resources are released when the app exits. Returning to the
+menu keeps the camera and window open so the next mode starts faster. The main
+menu does not request camera access until you first choose a mode.
 
 ## Files
 
@@ -79,16 +82,20 @@ signlingo/                the app's code
   settings.py             shared, per-user camera preferences
   settings_ui.py          small gear icon and settings popup
   runtime.py              camera/model cleanup and native window-close handling
+  ui.py                   the full-screen window and the text style every screen shares
+  camera.py               the webcam, opened once and shared by the menu and modes
   paths.py                where the model and examples live
 models/
   hand_landmarker.task    MediaPipe hand model
+assets/signs/             how to sign each letter, A.png ... Z.png (shown in letter practice)
 data/
   examples_karen.json     560 webcam examples, 24 still letters
   examples_dataset.json   726 examples made from the Kaggle ASL dataset
 tools/                    record and manage examples (not part of the app)
   collect_data.py         recorder, one file per person/hand
   examples_tool.py        count or remove saved examples
-tests/                    tests for the motion code
+  make_sign_images.py     cut an alphabet chart into assets/signs/
+tests/                    motion recognition, settings, navigation, and cleanup tests
 packaging/                SignLingo.spec and build_app.sh for the Mac app
 docs/plan.md              our mentor's step-by-step guide
 ```
@@ -107,6 +114,8 @@ docs/plan.md              our mentor's step-by-step guide
 - Our mentor: Brandon Shin, the step-by-step guide in `docs/plan.md`.
 - Hand photos for `data/examples_dataset.json` come from an ASL hand-sign
   dataset on Kaggle (add the dataset link and its license here).
+- The hand pictures in `assets/signs/` are cut from a "Hand Drawn Sign Language
+  Alphabet" chart found on Pinterest (add the original artist and its license here).
 - Built with help from Claude (Anthropic).
 
 Full history of who wrote what is in `git log` (use `git log --follow <file>`

@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 
 import main as launcher
-from signlingo import menu_button, runtime
+from signlingo import camera, menu_button, runtime, ui
 from signlingo.settings import SettingsStore
 from signlingo.settings_ui import SettingsPanel, limit_frame_rate, window_is_open
 
@@ -87,6 +87,26 @@ class SettingsTests(unittest.TestCase):
             menu_button.on_mouse(cv2.EVENT_LBUTTONDOWN, x1+5, y1+5, 0, None)
             self.assertFalse(menu_button.MENU_BUTTON['clicked'])
 
+    def test_main_menu_and_gear_have_separate_hit_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for width, height in ((640, 480), (1280, 720)):
+                with self.subTest(size=(width, height)):
+                    panel = SettingsPanel(SettingsStore(Path(directory) / 'settings.json'))
+                    frame = np.zeros((height, width, 3), dtype=np.uint8)
+                    with patch.object(cv2, 'setMouseCallback'):
+                        menu_button.install(settings_panel=panel)
+                    menu_button.draw_menu_button(frame)
+                    panel.draw(frame)
+                    mx1, my1, mx2, my2 = menu_button.MENU_BUTTON['rect']
+                    gx1, gy1, gx2, gy2 = panel.gear_rect
+                    self.assertLess(mx2, gx1)
+                    menu_button.on_mouse(cv2.EVENT_LBUTTONDOWN, (gx1+gx2)//2, (gy1+gy2)//2, 0, None)
+                    self.assertTrue(panel.is_open)
+                    self.assertFalse(menu_button.MENU_BUTTON['clicked'])
+                    panel.toggle_open()
+                    menu_button.on_mouse(cv2.EVENT_LBUTTONDOWN, (mx1+mx2)//2, (my1+my2)//2, 0, None)
+                    self.assertTrue(menu_button.MENU_BUTTON['clicked'])
+
     def test_frame_rate_limiter(self):
         with patch('signlingo.settings_ui.time.monotonic', return_value=10.04), \
                 patch('signlingo.settings_ui.time.sleep') as sleep:
@@ -107,8 +127,9 @@ class LifecycleTests(unittest.TestCase):
             self.assertFalse(window_is_open())
 
     def test_menu_close_does_not_wait_for_a_key(self):
-        with patch.object(cv2, 'namedWindow'), patch.object(cv2, 'setMouseCallback'), \
-                patch.object(cv2, 'imshow'), patch.object(cv2, 'destroyAllWindows') as destroy, \
+        with patch.object(cv2, 'namedWindow'), patch.object(cv2, 'setWindowProperty'), \
+                patch.object(cv2, 'setMouseCallback'), patch.object(cv2, 'imshow'), \
+                patch.object(cv2, 'destroyAllWindows') as destroy, \
                 patch.object(cv2, 'waitKey', return_value=255) as wait, \
                 patch.object(cv2, 'getWindowProperty', return_value=0):
             self.assertIsNone(launcher.choose_mode())
@@ -119,12 +140,34 @@ class LifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             panel = SettingsPanel(SettingsStore(Path(directory) / 'settings.json'))
             with patch.object(launcher, 'SettingsPanel', return_value=panel), \
-                    patch.object(cv2, 'namedWindow'), patch.object(cv2, 'setMouseCallback'), \
-                    patch.object(cv2, 'imshow'), patch.object(cv2, 'destroyAllWindows'), \
+                    patch.object(cv2, 'namedWindow'), patch.object(cv2, 'setWindowProperty'), \
+                    patch.object(cv2, 'setMouseCallback'), patch.object(cv2, 'imshow'), \
+                    patch.object(cv2, 'destroyAllWindows'), \
                     patch.object(cv2, 'waitKey', side_effect=[ord(','), ord('1'), 27, ord('2')]), \
                     patch.object(cv2, 'getWindowProperty', return_value=1):
                 self.assertEqual(launcher.choose_mode(), 'signlingo.words')
                 self.assertTrue(panel.store.values.low_power)
+
+    def test_menu_click_targets_follow_full_screen_layout(self):
+        for size in ((640, 480), (1280, 720)):
+            for offset, expected in ((20, 'signlingo.practice'), (110, 'signlingo.words')):
+                with self.subTest(size=size, mode=expected), \
+                        patch.object(ui, 'screen_size', return_value=size), \
+                        patch.object(cv2, 'namedWindow'), \
+                        patch.object(cv2, 'setWindowProperty') as fullscreen, \
+                        patch.object(cv2, 'setMouseCallback') as mouse, \
+                        patch.object(cv2, 'imshow'), \
+                        patch.object(cv2, 'getWindowProperty', return_value=1), \
+                        patch.object(cv2, 'destroyAllWindows') as destroy:
+                    def click_mode(_delay):
+                        mouse.call_args.args[1](cv2.EVENT_LBUTTONDOWN, size[0]//2,
+                                                size[1]//2 + offset, 0, None)
+                        return 255
+                    with patch.object(cv2, 'waitKey', side_effect=click_mode):
+                        self.assertEqual(launcher.choose_mode(), expected)
+                    fullscreen.assert_called_once_with(ui.WINDOW, cv2.WND_PROP_FULLSCREEN,
+                                                       cv2.WINDOW_FULLSCREEN)
+                    destroy.assert_not_called()  # The window carries into the mode.
 
     def test_closing_menu_never_opens_camera(self):
         with patch.object(launcher, 'choose_mode', return_value=None), \
@@ -155,6 +198,78 @@ class LifecycleTests(unittest.TestCase):
             detector.close.assert_called_once()
             destroy.assert_called_once()
 
+    def test_modes_reuse_launchers_camera_until_app_exit(self):
+        cap = Mock()
+        cap.isOpened.return_value = True
+        detectors = [Mock(), Mock()]
+        with patch.object(cv2, 'VideoCapture', return_value=cap) as capture, \
+                patch.object(runtime.vision.HandLandmarker, 'create_from_options', side_effect=detectors), \
+                patch.object(cv2, 'destroyAllWindows') as destroy:
+            try:
+                self.assertIs(camera.open_camera(), cap)  # Launcher permission check.
+                for detector in detectors:
+                    with runtime.mode_camera() as (actual_detector, actual_cap):
+                        self.assertIs(actual_cap, cap)
+                        self.assertIs(actual_detector, detector)
+                    detector.close.assert_called_once()
+                    cap.release.assert_not_called()
+                capture.assert_called_once_with(0)
+                destroy.assert_not_called()
+                with patch.object(launcher, 'choose_mode', return_value=None):
+                    self.assertEqual(launcher.main(), 0)
+                cap.release.assert_called_once()
+                self.assertFalse(camera.is_open())
+                destroy.assert_called_once()
+            finally:
+                camera.close_camera()
+
+    def test_native_close_or_error_releases_shared_camera(self):
+        for error in (SystemExit(0), RuntimeError('inference failed')):
+            with self.subTest(error=type(error).__name__):
+                cap, detector = Mock(), Mock()
+                cap.isOpened.return_value = True
+                with patch.object(cv2, 'VideoCapture', return_value=cap), \
+                        patch.object(runtime.vision.HandLandmarker, 'create_from_options', return_value=detector), \
+                        patch.object(cv2, 'destroyAllWindows') as destroy:
+                    camera.open_camera()
+                    with self.assertRaises(type(error)):
+                        with runtime.mode_camera():
+                            raise error
+                    cap.release.assert_called_once()
+                    detector.close.assert_called_once()
+                    destroy.assert_called_once()
+                    self.assertFalse(camera.is_open())
+
+    def test_model_initialization_failure_releases_shared_camera(self):
+        cap = Mock()
+        cap.isOpened.return_value = True
+        with patch.object(cv2, 'VideoCapture', return_value=cap), \
+                patch.object(runtime.vision.HandLandmarker, 'create_from_options',
+                             side_effect=RuntimeError('model failed')), \
+                patch.object(cv2, 'destroyAllWindows') as destroy:
+            camera.open_camera()
+            with self.assertRaises(RuntimeError):
+                with runtime.mode_camera():
+                    self.fail('A failed model must not enter the mode')
+            cap.release.assert_called_once()
+            destroy.assert_called_once()
+            self.assertFalse(camera.is_open())
+
+    def test_model_cleanup_failure_still_releases_shared_camera(self):
+        cap, detector = Mock(), Mock()
+        cap.isOpened.return_value = True
+        detector.close.side_effect = RuntimeError('cleanup failed')
+        with patch.object(cv2, 'VideoCapture', return_value=cap), \
+                patch.object(runtime.vision.HandLandmarker, 'create_from_options', return_value=detector), \
+                patch.object(cv2, 'destroyAllWindows') as destroy:
+            camera.open_camera()
+            with self.assertRaises(RuntimeError):
+                with runtime.mode_camera():
+                    pass
+            cap.release.assert_called_once()
+            destroy.assert_called_once()
+            self.assertFalse(camera.is_open())
+
 
 class ModeIntegrationTests(unittest.TestCase):
     def run_one_frame(self, mode, store, close=False):
@@ -169,10 +284,13 @@ class ModeIntegrationTests(unittest.TestCase):
         cap.read.return_value = (True, frame.copy())
         with ExitStack() as stack:
             stack.enter_context(patch.object(module, 'get_settings', return_value=store))
+            stack.enter_context(patch.object(ui, 'screen_size', return_value=(640, 480)))
+            fit = stack.enter_context(patch.object(ui, 'fit', wraps=ui.fit))
+            sign_card = stack.enter_context(patch.object(ui, 'sign_card', wraps=ui.sign_card))
             stack.enter_context(patch.object(module.sys if mode == 'practice' else launcher.sys, 'argv', ['main.py']))
             stack.enter_context(patch.object(cv2, 'VideoCapture', return_value=cap))
             stack.enter_context(patch.object(runtime.vision.HandLandmarker, 'create_from_options', return_value=detector))
-            for method in ('namedWindow', 'setMouseCallback', 'imshow', 'destroyAllWindows'):
+            for method in ('namedWindow', 'setWindowProperty', 'setMouseCallback', 'imshow', 'destroyAllWindows'):
                 stack.enter_context(patch.object(cv2, method))
             stack.enter_context(patch.object(cv2, 'waitKey', return_value=255 if close else 27))
             stack.enter_context(patch.object(cv2, 'getWindowProperty', side_effect=[1, 1, 0] if close else None,
@@ -186,8 +304,11 @@ class ModeIntegrationTests(unittest.TestCase):
             else:
                 getattr(module, 'run_' + mode + '_mode')()
             guess.assert_called_once()
-            # Two circles for the gear; two per landmark only when enabled.
-            self.assertEqual(circles.call_count, 2 + (42 if store.values.show_landmarks else 0))
+            fit.assert_called_once()
+            if mode == 'practice':
+                sign_card.assert_called_once()  # Keep main's reference pictures.
+            # Two circles for the gear; main's style uses one dot per landmark.
+            self.assertEqual(circles.call_count, 2 + (21 if store.values.show_landmarks else 0))
             rgb = detector.detect_for_video.call_args.args[0].numpy_view()
             column = -1 if store.values.selfie else 0
             np.testing.assert_array_equal(rgb[0, column], [255, 0, 0])

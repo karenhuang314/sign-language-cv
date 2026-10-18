@@ -8,7 +8,7 @@ Opens a modern start menu to choose between:
 Run from code:    python main.py
 Build the app:    ./packaging/build_app.sh   (makes dist/SignLingo.app on macOS)
 
-When opened from Finder, all logs and errors are written to 
+When opened from Finder, all logs and errors are written to
 SignLingo-log.txt in your home folder.
 """
 
@@ -20,6 +20,8 @@ import time
 import traceback
 import cv2
 import numpy as np
+
+from signlingo import camera, ui
 from signlingo.settings_ui import SettingsPanel, window_is_open
 
 PACKAGED = hasattr(sys, "_MEIPASS")
@@ -33,78 +35,84 @@ def show_message(text):
 
 
 def wait_for_camera(seconds=30):
-    """Wait until macOS camera permission is granted."""
-    end = time.time() + seconds
-    while time.time() < end:
-        cap = cv2.VideoCapture(0)
-        ok = cap.isOpened() and cap.read()[0]
-        cap.release()
-        if ok:
+    """Wait for camera permission, keeping the camera open for the mode."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        cap = camera.open_camera()
+        if cap.isOpened() and cap.read()[0]:
             return True
+        camera.close_camera()
         time.sleep(1)
     return False
 
 
 def choose_mode():
-    """Renders a start menu to select between practice and words modes."""
-    canvas = np.zeros((480, 640, 3), dtype=np.uint8)
-    canvas[:] = (24, 24, 27)
+    """Start menu, in the same window and style as the practice screens."""
+    w, h = ui.screen_size()
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = ui.BACKGROUND
 
-    # Title & Subtitle
-    cv2.putText(canvas, "SIGNLINGO", (215, 110), 
-                cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 3, cv2.LINE_AA)
-    cv2.putText(canvas, "Select a Practice Mode to Begin", (185, 155), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (161, 161, 170), 1, cv2.LINE_AA)
+    mid = h // 2
+    ui.centered(canvas, "SignLingo", mid - 160, 3.0, ui.WHITE, 7)
+    ui.centered(canvas, "ASL fingerspelling practice", mid - 100, 1.0, ui.GREY, 2)
 
-    # Mode 1 Card: Single Letter Practice
-    cv2.rectangle(canvas, (110, 195), (530, 265), (39, 39, 42), -1)
-    cv2.rectangle(canvas, (110, 195), (530, 265), (63, 63, 70), 1)
-    cv2.putText(canvas, "[1] Single Letter Practice", (135, 238), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.72, (34, 197, 94), 2, cv2.LINE_AA)
+    # Keep the updated menu's style, with hit boxes matching its text.
+    mode_rects = []
+    for y, key, name, module in (
+        (mid + 40, "1", "Single Letter Practice", "signlingo.practice"),
+        (mid + 130, "2", "Word Challenge", "signlingo.words"),
+    ):
+        label_width = ui.text_width(f"{key}   {name}", 1.5, 4)
+        x = (w - label_width) // 2
+        ui.text(canvas, key, (x, y), 1.5, ui.YELLOW, 4)
+        ui.text(canvas, name, (x + ui.text_width(f"{key}   ", 1.5, 4), y), 1.5, ui.WHITE, 4)
+        mode_rects.append(((x - 16, y - 48, x + label_width + 16, y + 18), module))
 
-    # Mode 2 Card: Word Spelling Challenge
-    cv2.rectangle(canvas, (110, 290), (530, 360), (39, 39, 42), -1)
-    cv2.rectangle(canvas, (110, 290), (530, 360), (63, 63, 70), 1)
-    cv2.putText(canvas, "[2] Word Spelling Challenge", (135, 333), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.72, (0, 255, 255), 2, cv2.LINE_AA)
-
-    # Instructions
-    cv2.putText(canvas, "Press [1] or [2] to start   |   [ESC] to Exit", (170, 425), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.48, (113, 113, 122), 1, cv2.LINE_AA)
-
+    ui.help_line(canvas, "1 or 2 = start   ESC = quit")
     settings_panel = SettingsPanel()
     selected = {"mode": None}
 
     def on_mouse(event, x, y, flags, param):
         if settings_panel.on_mouse(event, x, y, flags, param):
             return
-        if event == cv2.EVENT_LBUTTONDOWN and 110 <= x <= 530:
-            if 195 <= y <= 265:
-                selected["mode"] = "signlingo.practice"
-            elif 290 <= y <= 360:
-                selected["mode"] = "signlingo.words"
+        if event == cv2.EVENT_LBUTTONDOWN:
+            for (x1, y1, x2, y2), module in mode_rects:
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    selected["mode"] = module
+                    break
 
-    cv2.namedWindow("SignLingo")
-    cv2.setMouseCallback("SignLingo", on_mouse)
+    ui.open_window()
+    cv2.setMouseCallback(ui.WINDOW, on_mouse)
+    switching_modes = False
+    preloaded = False
     try:
         while True:
-            cv2.imshow("SignLingo", settings_panel.draw(canvas.copy()))
-            # Poll instead of waitKey(0): the native close button must be noticed.
+            ui.show(settings_panel.draw(canvas.copy()))
+            # Poll instead of blocking: notice the native close button, too.
             key = cv2.waitKey(30) & 0xFF
-            if not window_is_open("SignLingo"):
+            if not window_is_open(ui.WINDOW):
                 return None
+            if not preloaded:
+                # Warm up tracking after the first menu frame is visible.
+                # Keep the key above, so input during startup is not lost.
+                import mediapipe  # noqa: F401
+                from mediapipe.tasks.python import vision  # noqa: F401
+                preloaded = True
             if settings_panel.handle_key(key):
                 continue
-            if selected["mode"] is not None:
-                return selected["mode"]
             if key == ord("1"):
-                return "signlingo.practice"
+                selected["mode"] = "signlingo.practice"
             elif key == ord("2"):
-                return "signlingo.words"
+                selected["mode"] = "signlingo.words"
             elif key == 27:
                 return None
+            if selected["mode"] is not None:
+                switching_modes = True
+                return selected["mode"]
     finally:
-        cv2.destroyAllWindows()
+        # Carry the same full-screen window into the chosen mode.
+        if not switching_modes:
+            cv2.destroyAllWindows()
 
 
 def main():
@@ -112,6 +120,14 @@ def main():
         log = open(os.path.join(os.path.expanduser("~"), "SignLingo-log.txt"), "w", buffering=1)
         sys.stdout = sys.stderr = log
         sys.argv = sys.argv[:1]  # macOS can add its own arguments; ignore them.
+        # Keep the font cache across launches instead of rescanning every font.
+        import hashlib
+        mpl_cache = os.path.join(
+            os.path.expanduser("~"), "Library", "Caches", "SignLingo",
+            "matplotlib-" + hashlib.sha1(sys._MEIPASS.encode()).hexdigest()[:12],
+        )
+        os.makedirs(mpl_cache, exist_ok=True)
+        os.environ["MPLCONFIGDIR"] = mpl_cache
     # Preserve the existing packaged OpenCV path behavior (no sys.path edits).
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     os.chdir(base)
@@ -133,7 +149,10 @@ def main():
         show_message("SignLingo hit an error. Details are in SignLingo-log.txt in your home folder.")
         return 1
     finally:
-        cv2.destroyAllWindows()
+        try:
+            camera.close_camera()
+        finally:
+            cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

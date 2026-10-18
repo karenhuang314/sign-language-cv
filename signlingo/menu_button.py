@@ -1,48 +1,45 @@
 """menu_button.py - the clickable "Main Menu" button shared by both modes.
 
-Draw it every frame (it sits in the footer panel). A left-click inside it, or
-ESC, ends the mode's loop, which hands control back to the start menu in main.py.
+Draw it every frame (top right, in the same style as the rest of the app).
+A left-click inside it, or ESC, ends the mode's loop, which hands control
+back to the start menu in main.py.
 
-  install("SignLingo")       -> create the window and start listening for clicks
+  install(settings_panel=...) -> listen for settings and Main Menu clicks
   draw_menu_button(frame)    -> paint it and remember where it is
   MENU_BUTTON["clicked"]     -> True once the player clicks it
 """
 
 import cv2
 
-MENU_BUTTON_LABEL = "MAIN MENU"
-MENU_BUTTON_W, MENU_BUTTON_H = 158, 40
+from signlingo import ui
+
+MENU_BUTTON_LABEL = "Main Menu"
 MENU_BUTTON = {"rect": (0, 0, 0, 0), "hover": False, "clicked": False}
 _settings_panel = None
 
 
-def install(window_name, settings_panel=None):
-    """Set up the window and mouse callback before the camera loop starts."""
+def install(window_name=ui.WINDOW, settings_panel=None):
+    """Start listening for clicks; call after the shared window is open."""
     global _settings_panel
     _settings_panel = settings_panel
     MENU_BUTTON["rect"] = (0, 0, 0, 0)
     MENU_BUTTON["hover"] = False
     MENU_BUTTON["clicked"] = False
-    cv2.namedWindow(window_name)
     cv2.setMouseCallback(window_name, on_mouse)
 
 
 def draw_menu_button(frame):
     """Draw the Main Menu button and remember its rectangle for mouse clicks."""
-    h, w = frame.shape[:2]
-    x1, y1 = w - MENU_BUTTON_W - 32, h - 72
-    x2, y2 = x1 + MENU_BUTTON_W, y1 + MENU_BUTTON_H
+    w = frame.shape[1]
+    label_w = ui.text_width(MENU_BUTTON_LABEL, 0.8, 2)
+    # Leave a separate hit target for the settings gear at the far right.
+    x2, y1 = w - (68 if _settings_panel is not None else 8), 8
+    x1, y2 = x2 - label_w - 40, y1 + 52            # at least 44 px tall to click easily
     MENU_BUTTON["rect"] = (x1, y1, x2, y2)
 
     hovered = MENU_BUTTON["hover"]
-    face, edge = ((63, 63, 70), (255, 255, 255)) if hovered else ((39, 39, 42), (161, 161, 170))
-    cv2.rectangle(frame, (x1, y1), (x2, y2), face, -1)
-    cv2.rectangle(frame, (x1, y1), (x2, y2), edge, 1)
-
-    (tw, th), _ = cv2.getTextSize(MENU_BUTTON_LABEL, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-    cv2.putText(frame, MENU_BUTTON_LABEL,
-                (x1 + (MENU_BUTTON_W - tw) // 2, y1 + (MENU_BUTTON_H + th) // 2),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, edge, 1, cv2.LINE_AA)
+    ui.backdrop(frame, x1, y1, x2, y2, darkness=0.75 if hovered else 0.6)
+    ui.text(frame, MENU_BUTTON_LABEL, (x1 + 20, y1 + 35), 0.8, ui.YELLOW if hovered else ui.WHITE, 2)
     return frame
 
 

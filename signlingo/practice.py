@@ -1,5 +1,18 @@
 """
-practice.py - ASL fingerspelling single letter practice mode.
+practice.py - fingerspelling practice mode (Step 7 of the mentor's guide).
+
+Run:  python -m signlingo.practice        (random letters)
+      python -m signlingo.practice B      (focus mode: only B, good for testing one letter)
+  - The screen shows a letter to make, e.g. "Make: B", and a reference picture.
+  - Hold the sign steady. When the app sees that letter 10 frames in a row,
+    it shows "Correct!" for 1.5 seconds and moves to the next letter.
+  - J and Z are motion letters: do the whole movement (J with your pinky,
+    Z with your index finger). These use Etinosa's motion_recognition.py.
+  - Press a letter key to focus on that letter, or 0 for random letters.
+  - SPACE skips; ESC or Main Menu returns to the menu; native close quits.
+  - The gear or comma opens the shared camera settings.
+
+Uses data/examples_*.json and the shared recipe in features.py.
 """
 
 import random
@@ -7,6 +20,8 @@ import sys
 import time
 import cv2
 import mediapipe as mp
+
+from signlingo import ui
 from signlingo.features import hand_to_numbers, guess_letter, load_all_examples, MOTION_LETTERS
 from signlingo.menu_button import MENU_BUTTON, draw_menu_button, install
 from signlingo.motion_recognition import MotionRecognizer
@@ -15,7 +30,7 @@ from signlingo.settings import get_settings
 from signlingo.settings_ui import SettingsPanel, limit_frame_rate
 
 FRAMES_NEEDED = 10
-CORRECT_SECONDS = 1.3
+CORRECT_SECONDS = 1.5
 
 examples = load_all_examples()
 LETTERS = sorted({e["letter"] for e in examples})
@@ -24,78 +39,15 @@ if not LETTERS:
 LETTERS = sorted(LETTERS + list(MOTION_LETTERS))
 
 
-def draw_styled_hud(frame, target, guess, streak, frames_needed, is_motion, motion_tip, focus, focus_hits, last_took, score):
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-
-    panel_h = 145 if is_motion else 120
-    cv2.rectangle(overlay, (20, 20), (450, panel_h), (24, 24, 27), -1)
-    cv2.rectangle(overlay, (20, h - 85), (w - 20, h - 20), (24, 24, 27), -1)
-
-    cv2.addWeighted(overlay, 0.72, frame, 0.28, 0, frame)
-
-    cv2.rectangle(frame, (20, 20), (450, panel_h), (63, 63, 70), 1)
-    cv2.rectangle(frame, (20, h - 85), (w - 20, h - 20), (63, 63, 70), 1)
-
-    cv2.putText(frame, "SIGNLINGO PRACTICE", (35, 46),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.48, (161, 161, 170), 1, cv2.LINE_AA)
-    cv2.putText(frame, f"SIGN: {target}", (35, 85),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.95, (255, 255, 255), 2, cv2.LINE_AA)
-
-    seen_text = f"SEE: {guess}" if guess else "SEE: ..."
-    status_color = (34, 197, 94) if (guess == target and streak > 0) else (161, 161, 170)
-    cv2.putText(frame, seen_text, (260, 85),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.65, status_color, 2, cv2.LINE_AA)
-
-    bar_x, bar_y, bar_w, bar_h = 35, 96, 380, 7
-    fill_ratio = min(max(streak / frames_needed, 0.0), 1.0)
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (51, 65, 85), -1)
-    if fill_ratio > 0.0:
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + int(bar_w * fill_ratio), bar_y + bar_h), (34, 197, 94), -1)
-
-    if is_motion and motion_tip:
-        cv2.putText(frame, f"Tip: {motion_tip}", (35, 130),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (251, 191, 36), 1, cv2.LINE_AA)
-
-    if focus:
-        took_str = f" | Last: {last_took:.1f}s" if last_took is not None else ""
-        stats_line = f"FOCUS MODE ({focus}): {focus_hits} hits{took_str}"
-    else:
-        stats_line = f"SCORE: {score}"
-
-    cv2.putText(frame, stats_line, (35, h - 55),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
-
-    controls = "[ESC] or MAIN MENU   |   [0] Random   |   [A-Z] Focus   |   [SPACE] Skip"
-    cv2.putText(frame, controls, (35, h - 32),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.44, (161, 161, 170), 1, cv2.LINE_AA)
-
-    draw_menu_button(frame)
-    return frame
-
-
-def draw_success_banner(frame):
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-    box_w, box_h = 420, 110
-    x1, y1 = (w - box_w) // 2, (h - box_h) // 2
-    cv2.rectangle(overlay, (x1, y1), (x1 + box_w, y1 + box_h), (20, 83, 45), -1)
-    cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
-    cv2.rectangle(frame, (x1, y1), (x1 + box_w, y1 + box_h), (34, 197, 94), 2)
-    cv2.putText(frame, "CORRECT!", (x1 + 45, y1 + 70),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 255, 255), 3, cv2.LINE_AA)
-    return frame
-
-
 def next_target_letter(current=None, focus=None):
+    """Pick a different random letter, or keep the explicitly chosen focus."""
     if focus:
         return focus
-    choices = [L for L in LETTERS if L != current] or LETTERS
+    choices = [letter for letter in LETTERS if letter != current] or LETTERS
     return random.choice(choices)
 
 
 def run_practice_mode():
-    # Keep the existing keyboard controls and HUD; settings only add a gear.
     focus = sys.argv[1].upper() if len(sys.argv) > 1 else None
     if focus and focus not in LETTERS:
         raise SystemExit(f"No examples for {focus}. Letters available: {' '.join(LETTERS)}")
@@ -114,7 +66,8 @@ def run_practice_mode():
     score = 0
 
     with mode_camera() as (landmarker, cap):
-        install("SignLingo", settings_panel)
+        ui.open_window()
+        install(ui.WINDOW, settings_panel)
         while cap.isOpened():
             started = time.monotonic()
             require_open_window()
@@ -128,6 +81,7 @@ def run_practice_mode():
                 break
             if preferences.selfie:
                 frame = cv2.flip(frame, 1)
+            frame = ui.fit(frame)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             timestamp_ms = max(int((time.monotonic() - start_time) * 1000), last_timestamp_ms + 1)
@@ -140,10 +94,7 @@ def run_practice_mode():
             hand = result.hand_landmarks[0] if result.hand_landmarks else None
             if hand:
                 if preferences.show_landmarks:
-                    for p in hand:
-                        cx, cy = int(p.x * w), int(p.y * h)
-                        cv2.circle(frame, (cx, cy), 5, (16, 185, 129), 1, cv2.LINE_AA)
-                        cv2.circle(frame, (cx, cy), 2, (255, 255, 255), -1, cv2.LINE_AA)
+                    ui.hand_dots(frame, hand)
                 guess, _ = guess_letter(hand_to_numbers(hand), examples)
             motion_letter = motion_tracker.update(
                 hand if not settings_panel.is_open else None, time.monotonic(), w / h)
@@ -151,7 +102,7 @@ def run_practice_mode():
                 guess = motion_letter
 
             if now < correct_until:
-                frame = draw_success_banner(frame)
+                ui.centered(frame, "Correct!", h // 2, 2.5, ui.GREEN, 6, boxed=True)
             else:
                 if settings_panel.is_open:
                     streak = 0
@@ -168,15 +119,32 @@ def run_practice_mode():
                         focus_hits += 1
                     target = next_target_letter(target, focus=focus)
                     target_since = now + CORRECT_SECONDS
-                tip = "Trace J with pinky" if target == "J" else ("Trace Z with index" if target == "Z" else "")
-                frame = draw_styled_hud(
-                    frame, target, guess, streak, FRAMES_NEEDED, target in MOTION_LETTERS,
-                    tip, focus, focus_hits, last_took, score)
+
+                seen = guess if guess else "?"
+                tip = f"Move: {ui.motion_tip(target)}" if target in MOTION_LETTERS else None
+                widest = max(ui.text_width(f"Make: {target}", 2.0, 5),
+                             ui.text_width(tip, 0.8, 2) if tip else 0)
+                ui.top_backdrop(frame, widest, 215 if tip else 175)
+                ui.text(frame, f"Make: {target}", (20, 70), 2.0, ui.WHITE, 5)
+                ui.sign_card(frame, target)
+                ui.hold_bar(frame, streak, FRAMES_NEEDED)
+                ui.text(frame, f"I see: {seen}", (20, 155), 1.0, ui.YELLOW, 2)
+                if tip:
+                    ui.text(frame, tip, (20, 195), 0.8, ui.TIP, 2)
+
+            if focus:
+                took = f", last took {last_took:.1f}s" if last_took is not None else ""
+                help_text = "letter key = focus   0 = random   SPACE = skip   ESC = menu"
+                focus_text = f"Focus {focus}: {focus_hits} correct{took}"
+                ui.help_line(frame, help_text, above=focus_text)
+            else:
+                help_text = f"Score: {score}   letter key = focus   SPACE = skip   ESC = menu"
+                ui.help_line(frame, help_text)
 
             draw_menu_button(frame)
             settings_panel.draw(frame)
             require_open_window()
-            cv2.imshow("SignLingo", frame)
+            ui.show(frame)
             key = cv2.waitKey(1) & 0xFF
             require_open_window()
             if settings_panel.handle_key(key):

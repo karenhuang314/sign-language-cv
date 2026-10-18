@@ -1,0 +1,4 @@
+# Desktop runtime only; Gradio is not required.
+mediapipe
+opencv-python
+PySide6>=6.10,<7

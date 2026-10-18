@@ -53,8 +53,11 @@ Run everything from the repo root.
 |---|---|
 | `python desktop_app.py` | **SignLingo desktop**: native Qt window with local recognition and practice. |
 | `python -m web.app` | **Website** (Gradio): open the link it prints, allow the camera, press Record. Live tab shows the letter; Practice tab is the game with a letter picker. |
+| `python -m tools.launcher` | Start menu for the OpenCV games: letter practice or Word Challenge. |
+| `python -m tools.words` | Word Challenge: spell random words up to 5 letters. |
 | `python -m tools.practice` | Practice game: make the letter shown, hold it, get "Correct!". SPACE skips, ESC quits. |
 | `python -m tools.practice B` | Focus mode: practice only B (or press a letter key while running; `0` goes back to random). Shows how many times it worked and how long the last one took. |
+| `python -m web.web_app` | Second Gradio website (Karen's): live letters and sentence building; records into the root `examples_karen.json`. |
 | `python -m tools.camera` | Live classifier: shows the letter it sees. Press a letter key to record 20 examples (saved to `data/examples_camera.json`). ESC quits. |
 | `python -m tools.collect_data yourname_left` | Record examples one key press at a time into `data/examples_yourname_left.json`. `1` undoes, ESC quits. |
 | `python -m tools.examples_tool count` | How many examples each letter has. |
@@ -75,10 +78,16 @@ signlingo/              the shared package
   camera_window.py      camera-first desktop look with the gear sidebar
   window.py             original card-layout desktop window
   assets/               app icon
-web/app.py              website version (Gradio): Live and Practice tabs
+web/
+  app.py                website version (Gradio): Live and Practice tabs
+  web_app.py            second Gradio website, with sentence building
+web-ui/                 React + Vite front end (starter template so far)
 tools/                  OpenCV scripts
   camera.py             live classifier with recording
+  launcher.py           start menu: letter practice or Word Challenge
   practice.py           practice game (the original demo)
+  words.py              Word Challenge mode
+  testcv.py             quick hand-model check
   collect_data.py       recorder, one file per person/hand
   examples_tool.py      count or remove saved examples
 tests/                  camera-free tests (desktop + motion)

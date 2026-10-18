@@ -1,6 +1,7 @@
 """Camera capture in a QThread, with a latest-frame mailbox (no UI backlog)."""
 
 import logging
+import sys
 import threading
 import time
 
@@ -36,6 +37,10 @@ class FrameMailbox:
 class CameraWorker(QThread):
     status = Signal(str)
     failed = Signal(str)
+    # The first time on a Mac, opening the camera fails while the "allow
+    # camera?" prompt is up. Keep trying this long for the person to answer.
+    PERMISSION_WAIT_SECONDS = 60 if sys.platform == "darwin" else 0
+    PERMISSION_POLL_SECONDS = 1
 
     def __init__(self, examples, mailbox, camera_index=0, parent=None,
                  capture_factory=None, engine_factory=None):
@@ -64,6 +69,24 @@ class CameraWorker(QThread):
         self._halt.set()
         self.requestInterruption()
 
+    def _open_camera(self):
+        """An open camera, or None if Stop was pressed while waiting."""
+        deadline = time.monotonic() + self.PERMISSION_WAIT_SECONDS
+        while True:
+            camera = self.capture_factory(self.camera_index)
+            if camera.isOpened():
+                return camera
+            camera.release()
+            if self._halt.is_set():
+                return None
+            if time.monotonic() >= deadline:
+                where = (" Allow it in System Settings > Privacy & Security > Camera,"
+                         if sys.platform == "darwin" else " Check camera permissions,")
+                raise RuntimeError(f"Could not open the camera.{where} close Zoom/Teams, "
+                                   "or try another camera number.")
+            self.status.emit("Waiting for camera access… click Allow if asked")
+            self._halt.wait(self.PERMISSION_POLL_SECONDS)
+
     def run(self):
         camera = engine = None
         try:
@@ -72,10 +95,9 @@ class CameraWorker(QThread):
             if self._halt.is_set():
                 return
             self.status.emit("Opening camera…")
-            camera = self.capture_factory(self.camera_index)
-            if not camera.isOpened():
-                raise RuntimeError("Could not open the camera. Check permissions, close Zoom/Teams, "
-                                   "or try another camera number.")
+            camera = self._open_camera()
+            if camera is None:
+                return
             camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Backend may ignore this hint.

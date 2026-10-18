@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
@@ -30,6 +31,16 @@ def main():
     handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=2, encoding='utf-8')
     logging.basicConfig(level=logging.INFO, handlers=[handler],
                         format='%(asctime)s %(levelname)s %(message)s')
+
+    if getattr(sys, 'frozen', False):
+        # MediaPipe pulls in matplotlib, and PyInstaller gives matplotlib a new
+        # temp folder each launch, so it re-scans every font (~3 s). Keep its
+        # cache instead, one per app location in case the app is moved.
+        import hashlib
+        cache = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation))
+        key = hashlib.sha1(sys._MEIPASS.encode()).hexdigest()[:12]
+        os.environ['MPLCONFIGDIR'] = str(cache / f'matplotlib-{key}')
+        Path(os.environ['MPLCONFIGDIR']).mkdir(parents=True, exist_ok=True)
 
     try:
         from signlingo.paths import ASSETS_DIR

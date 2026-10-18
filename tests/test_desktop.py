@@ -145,12 +145,45 @@ class DesktopTests(unittest.TestCase):
         errors = []
         worker = CameraWorker([], FrameMailbox(), capture_factory=lambda _: capture,
                               engine_factory=lambda _: SimpleNamespace(close=detector.close))
+        worker.PERMISSION_WAIT_SECONDS = 0
         worker.failed.connect(errors.append)
         with self.assertLogs(level='ERROR'):
             worker.run()
         self.assertTrue(errors)
         self.assertTrue(detector.closed)
         self.assertTrue(detector.released)
+
+    def test_camera_opens_once_permission_is_allowed(self):
+        # macOS: the first opens fail while the permission prompt is showing.
+        attempts = []
+        camera = SimpleNamespace(isOpened=lambda: len(attempts) >= 3, release=lambda: None,
+                                 set=lambda *a: True, read=lambda: (False, None))
+        def open_camera(_):
+            attempts.append(1)
+            return camera
+        worker = CameraWorker([], FrameMailbox(), capture_factory=open_camera,
+                              engine_factory=lambda _: SimpleNamespace(close=lambda: None))
+        worker.PERMISSION_WAIT_SECONDS, worker.PERMISSION_POLL_SECONDS = 5, 0
+        statuses, errors = [], []
+        worker.status.connect(statuses.append)
+        worker.failed.connect(errors.append)
+        with self.assertLogs(level='ERROR'):  # the fake camera then sends no frames
+            worker.run()
+        self.assertEqual(len(attempts), 3)
+        self.assertTrue(any('Waiting for camera access' in s for s in statuses))
+        self.assertIn('Camera ready • processing on this device', statuses)
+        self.assertNotIn('Could not open', ' '.join(errors))
+
+    def test_stop_while_waiting_for_permission_is_not_an_error(self):
+        errors = []
+        worker = CameraWorker([], FrameMailbox(),
+                              capture_factory=lambda _: SimpleNamespace(isOpened=lambda: False,
+                                                                        release=worker.stop),
+                              engine_factory=lambda _: SimpleNamespace(close=lambda: None))
+        worker.PERMISSION_WAIT_SECONDS, worker.PERMISSION_POLL_SECONDS = 5, 0
+        worker.failed.connect(errors.append)
+        worker.run()
+        self.assertEqual(errors, [])
 
     def test_worker_cleans_up_after_successful_stop(self):
         marker = SimpleNamespace(released=False, closed=False)

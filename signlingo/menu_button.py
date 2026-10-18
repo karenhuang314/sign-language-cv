@@ -13,10 +13,14 @@ import cv2
 MENU_BUTTON_LABEL = "MAIN MENU"
 MENU_BUTTON_W, MENU_BUTTON_H = 158, 40
 MENU_BUTTON = {"rect": (0, 0, 0, 0), "hover": False, "clicked": False}
+_settings_panel = None
 
 
-def install(window_name):
+def install(window_name, settings_panel=None):
     """Set up the window and mouse callback before the camera loop starts."""
+    global _settings_panel
+    _settings_panel = settings_panel
+    MENU_BUTTON["rect"] = (0, 0, 0, 0)
     MENU_BUTTON["hover"] = False
     MENU_BUTTON["clicked"] = False
     cv2.namedWindow(window_name)
@@ -43,7 +47,10 @@ def draw_menu_button(frame):
 
 
 def on_mouse(event, x, y, flags, param):
-    """Hover highlight and click handling for the Main Menu button."""
+    """Settings consume clicks first so the menu cannot fire behind the popup."""
+    if _settings_panel is not None and _settings_panel.on_mouse(event, x, y, flags, param):
+        MENU_BUTTON["hover"] = False
+        return
     x1, y1, x2, y2 = MENU_BUTTON["rect"]
     inside = x1 <= x <= x2 and y1 <= y <= y2
     MENU_BUTTON["hover"] = inside

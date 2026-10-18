@@ -20,13 +20,9 @@ import time
 import traceback
 import cv2
 import numpy as np
+from signlingo.settings_ui import SettingsPanel, window_is_open
 
 PACKAGED = hasattr(sys, "_MEIPASS")
-
-if PACKAGED:
-    log = open(os.path.join(os.path.expanduser("~"), "SignLingo-log.txt"), "w", buffering=1)
-    sys.stdout = sys.stderr = log
-    sys.argv = sys.argv[:1]   # macOS can add its own arguments; ignore them
 
 
 def show_message(text):
@@ -76,41 +72,69 @@ def choose_mode():
     cv2.putText(canvas, "Press [1] or [2] to start   |   [ESC] to Exit", (170, 425), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.48, (113, 113, 122), 1, cv2.LINE_AA)
 
-    cv2.imshow("SignLingo", canvas)
-    while True:
-        key = cv2.waitKey(0) & 0xFF
-        if key == ord("1"):
-            cv2.destroyAllWindows()
-            return "signlingo.practice"
-        elif key == ord("2"):
-            cv2.destroyAllWindows()
-            return "signlingo.words"
-        elif key == 27:
-            cv2.destroyAllWindows()
-            return None
+    settings_panel = SettingsPanel()
+    selected = {"mode": None}
+
+    def on_mouse(event, x, y, flags, param):
+        if settings_panel.on_mouse(event, x, y, flags, param):
+            return
+        if event == cv2.EVENT_LBUTTONDOWN and 110 <= x <= 530:
+            if 195 <= y <= 265:
+                selected["mode"] = "signlingo.practice"
+            elif 290 <= y <= 360:
+                selected["mode"] = "signlingo.words"
+
+    cv2.namedWindow("SignLingo")
+    cv2.setMouseCallback("SignLingo", on_mouse)
+    try:
+        while True:
+            cv2.imshow("SignLingo", settings_panel.draw(canvas.copy()))
+            # Poll instead of waitKey(0): the native close button must be noticed.
+            key = cv2.waitKey(30) & 0xFF
+            if not window_is_open("SignLingo"):
+                return None
+            if settings_panel.handle_key(key):
+                continue
+            if selected["mode"] is not None:
+                return selected["mode"]
+            if key == ord("1"):
+                return "signlingo.practice"
+            elif key == ord("2"):
+                return "signlingo.words"
+            elif key == 27:
+                return None
+    finally:
+        cv2.destroyAllWindows()
 
 
-# In the packaged app, files are unpacked into a temporary folder (_MEIPASS).
-base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-os.chdir(base)
+def main():
+    if PACKAGED:
+        log = open(os.path.join(os.path.expanduser("~"), "SignLingo-log.txt"), "w", buffering=1)
+        sys.stdout = sys.stderr = log
+        sys.argv = sys.argv[:1]  # macOS can add its own arguments; ignore them.
+    # Preserve the existing packaged OpenCV path behavior (no sys.path edits).
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(base)
+    try:
+        # Menu/settings do not need camera access. Ask only after a mode is chosen.
+        while True:
+            selected_mode = choose_mode()
+            if selected_mode is None:
+                return 0
+            if not wait_for_camera():
+                show_message("SignLingo can't use the camera. Allow camera access in your system "
+                             "privacy settings and close other camera apps, then try again.")
+                continue
+            runpy.run_module(selected_mode, run_name="__main__")
+    except SystemExit:
+        raise  # Native close in a mode quits the app; do not reopen the menu.
+    except Exception:
+        traceback.print_exc()
+        show_message("SignLingo hit an error. Details are in SignLingo-log.txt in your home folder.")
+        return 1
+    finally:
+        cv2.destroyAllWindows()
 
-try:
-    if not wait_for_camera():
-        show_message("SignLingo can't use the camera. Allow it in System Settings, "
-                     "Privacy & Security, Camera, then open SignLingo again.")
-        sys.exit(1)
 
-    # The menu keeps coming back after a mode ends, so you can pick another
-    # one. A mode returns here with ESC or the Main Menu button; ESC on the
-    # menu itself quits SignLingo.
-    while True:
-        selected_mode = choose_mode()
-        if selected_mode is None:
-            break
-        runpy.run_module(selected_mode, run_name="__main__")
-except SystemExit:
-    raise
-except Exception:
-    traceback.print_exc()
-    show_message("SignLingo hit an error. Details are in SignLingo-log.txt in your home folder.")
-    sys.exit(1)
+if __name__ == "__main__":
+    raise SystemExit(main())

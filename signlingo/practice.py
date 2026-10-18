@@ -7,12 +7,12 @@ import sys
 import time
 import cv2
 import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 from signlingo.features import hand_to_numbers, guess_letter, load_all_examples, MOTION_LETTERS
 from signlingo.menu_button import MENU_BUTTON, draw_menu_button, install
 from signlingo.motion_recognition import MotionRecognizer
-from signlingo.paths import MODEL_PATH
+from signlingo.runtime import mode_camera, require_open_window
+from signlingo.settings import get_settings
+from signlingo.settings_ui import SettingsPanel, limit_frame_rate
 
 FRAMES_NEEDED = 10
 CORRECT_SECONDS = 1.3
@@ -95,24 +95,16 @@ def next_target_letter(current=None, focus=None):
 
 
 def run_practice_mode():
-    landmarker = vision.HandLandmarker.create_from_options(
-        vision.HandLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(MODEL_PATH)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_hands=1,
-        )
-    )
-    motion_tracker = MotionRecognizer()
-    cap = cv2.VideoCapture(0)
-    start_time = time.time()
-    last_timestamp_ms = 0
-
-    install("SignLingo")
-
-    # Focus mode: python -m signlingo.practice B  (or press a letter key while running)
+    # Keep the existing keyboard controls and HUD; settings only add a gear.
     focus = sys.argv[1].upper() if len(sys.argv) > 1 else None
     if focus and focus not in LETTERS:
         raise SystemExit(f"No examples for {focus}. Letters available: {' '.join(LETTERS)}")
+    store = get_settings()
+    settings_panel = SettingsPanel(store)
+    settings_revision = -1
+    motion_tracker = MotionRecognizer()
+    start_time = time.monotonic()
+    last_timestamp_ms = 0
     focus_hits = 0
     last_took = None
     target_since = time.time()
@@ -121,95 +113,97 @@ def run_practice_mode():
     correct_until = 0
     score = 0
 
-    while cap.isOpened():
-        ok, frame = cap.read()
-        if not ok:
-            break
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-
-        timestamp_ms = max(int((time.time() - start_time) * 1000), last_timestamp_ms + 1)
-        last_timestamp_ms = timestamp_ms
-        result = landmarker.detect_for_video(mp_image, timestamp_ms)
-        h, w = frame.shape[:2]
-        now = time.time()
-
-        guess = None
-        hand = result.hand_landmarks[0] if result.hand_landmarks else None
-        if hand:
-            for p in hand:
-                cx, cy = int(p.x * w), int(p.y * h)
-                cv2.circle(frame, (cx, cy), 5, (16, 185, 129), 1, cv2.LINE_AA)
-                cv2.circle(frame, (cx, cy), 2, (255, 255, 255), -1, cv2.LINE_AA)
-            guess, _ = guess_letter(hand_to_numbers(hand), examples)
-
-        motion_letter = motion_tracker.update(hand, time.monotonic(), w / h)
-        if motion_letter:
-            guess = motion_letter
-
-        if now < correct_until:
-            frame = draw_success_banner(frame)
-        else:
-            if target in MOTION_LETTERS:
-                streak = FRAMES_NEEDED if motion_letter == target else 0
-            else:
-                streak = streak + 1 if guess == target else 0
-
-            if streak >= FRAMES_NEEDED:
-                score += 1
+    with mode_camera() as (landmarker, cap):
+        install("SignLingo", settings_panel)
+        while cap.isOpened():
+            started = time.monotonic()
+            require_open_window()
+            if settings_revision != settings_panel.revision:
+                settings_revision = settings_panel.revision
                 streak = 0
-                correct_until = now + CORRECT_SECONDS
-                last_took = now - target_since
-                if focus:
-                    focus_hits += 1
+                motion_tracker = MotionRecognizer()
+            preferences = store.values
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if preferences.selfie:
+                frame = cv2.flip(frame, 1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            timestamp_ms = max(int((time.monotonic() - start_time) * 1000), last_timestamp_ms + 1)
+            last_timestamp_ms = timestamp_ms
+            result = landmarker.detect_for_video(mp_image, timestamp_ms)
+            h, w = frame.shape[:2]
+            now = time.time()
+
+            guess = None
+            hand = result.hand_landmarks[0] if result.hand_landmarks else None
+            if hand:
+                if preferences.show_landmarks:
+                    for p in hand:
+                        cx, cy = int(p.x * w), int(p.y * h)
+                        cv2.circle(frame, (cx, cy), 5, (16, 185, 129), 1, cv2.LINE_AA)
+                        cv2.circle(frame, (cx, cy), 2, (255, 255, 255), -1, cv2.LINE_AA)
+                guess, _ = guess_letter(hand_to_numbers(hand), examples)
+            motion_letter = motion_tracker.update(
+                hand if not settings_panel.is_open else None, time.monotonic(), w / h)
+            if motion_letter:
+                guess = motion_letter
+
+            if now < correct_until:
+                frame = draw_success_banner(frame)
+            else:
+                if settings_panel.is_open:
+                    streak = 0
+                elif target in MOTION_LETTERS:
+                    streak = FRAMES_NEEDED if motion_letter == target else 0
+                else:
+                    streak = streak + 1 if guess == target else 0
+                if streak >= FRAMES_NEEDED:
+                    score += 1
+                    streak = 0
+                    correct_until = now + CORRECT_SECONDS
+                    last_took = now - target_since
+                    if focus:
+                        focus_hits += 1
+                    target = next_target_letter(target, focus=focus)
+                    target_since = now + CORRECT_SECONDS
+                tip = "Trace J with pinky" if target == "J" else ("Trace Z with index" if target == "Z" else "")
+                frame = draw_styled_hud(
+                    frame, target, guess, streak, FRAMES_NEEDED, target in MOTION_LETTERS,
+                    tip, focus, focus_hits, last_took, score)
+
+            draw_menu_button(frame)
+            settings_panel.draw(frame)
+            require_open_window()
+            cv2.imshow("SignLingo", frame)
+            key = cv2.waitKey(1) & 0xFF
+            require_open_window()
+            if settings_panel.handle_key(key):
+                limit_frame_rate(started, preferences.low_power)
+                continue
+            if MENU_BUTTON["clicked"]:
+                MENU_BUTTON["clicked"] = False
+                break
+            elif key == 27:
+                break
+            elif key == ord(" "):
                 target = next_target_letter(target, focus=focus)
-                target_since = now + CORRECT_SECONDS
-
-            is_motion = target in MOTION_LETTERS
-            tip = "Trace J with pinky" if target == "J" else ("Trace Z with index" if target == "Z" else "")
-
-            frame = draw_styled_hud(
-                frame=frame,
-                target=target,
-                guess=guess,
-                streak=streak,
-                frames_needed=FRAMES_NEEDED,
-                is_motion=is_motion,
-                motion_tip=tip,
-                focus=focus,
-                focus_hits=focus_hits,
-                last_took=last_took,
-                score=score
-            )
-
-        cv2.imshow("SignLingo", frame)
-        key = cv2.waitKey(1) & 0xFF
-
-        if MENU_BUTTON["clicked"]:
-            MENU_BUTTON["clicked"] = False
-            break
-        elif key == 27:
-            break
-        elif key == ord(" "):
-            target = next_target_letter(target, focus=focus)
-            streak = 0
-            target_since = time.time()
-        elif key == ord("0"):
-            focus = None
-            target = next_target_letter(target)
-            streak = 0
-            target_since = time.time()
-        elif key != 255 and chr(key).upper() in LETTERS:
-            focus = chr(key).upper()
-            focus_hits, last_took = 0, None
-            target = focus
-            streak = 0
-            correct_until = 0
-            target_since = time.time()
-
-    cap.release()
-    cv2.destroyAllWindows()
+                streak = 0
+                target_since = time.time()
+            elif key == ord("0"):
+                focus = None
+                target = next_target_letter(target)
+                streak = 0
+                target_since = time.time()
+            elif key != 255 and chr(key).upper() in LETTERS:
+                focus = chr(key).upper()
+                focus_hits, last_took = 0, None
+                target = focus
+                streak = 0
+                correct_until = 0
+                target_since = time.time()
+            limit_frame_rate(started, preferences.low_power)
 
 
 if __name__ == "__main__":

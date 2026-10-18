@@ -8,12 +8,12 @@ import time
 import cv2
 import numpy as np
 import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 from signlingo.features import hand_to_numbers, guess_letter, load_all_examples, MOTION_LETTERS
 from signlingo.menu_button import MENU_BUTTON, draw_menu_button, install
 from signlingo.motion_recognition import MotionRecognizer
-from signlingo.paths import MODEL_PATH
+from signlingo.runtime import mode_camera, require_open_window
+from signlingo.settings import get_settings
+from signlingo.settings_ui import SettingsPanel, limit_frame_rate
 
 FRAMES_NEEDED = 8
 WORD_CELEBRATE_SECS = 1.3
@@ -140,19 +140,12 @@ def draw_success_card(frame, word):
 
 
 def run_words_mode():
-    landmarker = vision.HandLandmarker.create_from_options(
-        vision.HandLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(MODEL_PATH)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_hands=1,
-        )
-    )
+    store = get_settings()
+    settings_panel = SettingsPanel(store)
+    settings_revision = -1
     motion_tracker = MotionRecognizer()
-    cap = cv2.VideoCapture(0)
-    start_time = time.time()
+    start_time = time.monotonic()
     last_timestamp_ms = 0
-
-    install("SignLingo")
     current_word = get_random_word()
     char_idx = 0
     words_done = 0
@@ -160,79 +153,84 @@ def run_words_mode():
     celebrate_until = 0
     just_spelled = ""
 
-    while cap.isOpened():
-        ok, frame = cap.read()
-        if not ok:
-            break
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-
-        timestamp_ms = max(int((time.time() - start_time) * 1000), last_timestamp_ms + 1)
-        last_timestamp_ms = timestamp_ms
-        result = landmarker.detect_for_video(mp_image, timestamp_ms)
-        h, w = frame.shape[:2]
-        now = time.time()
-
-        guess = None
-        hand = result.hand_landmarks[0] if result.hand_landmarks else None
-        if hand:
-            for p in hand:
-                cx, cy = int(p.x * w), int(p.y * h)
-                cv2.circle(frame, (cx, cy), 5, (16, 185, 129), 1, cv2.LINE_AA)
-                cv2.circle(frame, (cx, cy), 2, (255, 255, 255), -1, cv2.LINE_AA)
-            guess, _ = guess_letter(hand_to_numbers(hand), examples)
-
-        motion_letter = motion_tracker.update(hand, time.monotonic(), w / h)
-        if motion_letter:
-            guess = motion_letter
-
-        target = current_word[char_idx]
-
-        if now < celebrate_until:
-            frame = draw_success_card(frame, just_spelled)
-        else:
-            if target in MOTION_LETTERS:
-                streak = FRAMES_NEEDED if motion_letter == target else 0
-            else:
-                streak = streak + 1 if guess == target else 0
-
-            if streak >= FRAMES_NEEDED:
+    with mode_camera() as (landmarker, cap):
+        install("SignLingo", settings_panel)
+        while cap.isOpened():
+            started = time.monotonic()
+            require_open_window()
+            if settings_revision != settings_panel.revision:
+                settings_revision = settings_panel.revision
                 streak = 0
-                char_idx += 1
-                if char_idx >= len(current_word):
-                    words_done += 1
-                    just_spelled = current_word
-                    celebrate_until = now + WORD_CELEBRATE_SECS
-                    current_word = get_random_word(previous_word=current_word)
-                    char_idx = 0
+                motion_tracker = MotionRecognizer()
+            preferences = store.values
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if preferences.selfie:
+                frame = cv2.flip(frame, 1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            timestamp_ms = max(int((time.monotonic() - start_time) * 1000), last_timestamp_ms + 1)
+            last_timestamp_ms = timestamp_ms
+            result = landmarker.detect_for_video(mp_image, timestamp_ms)
+            h, w = frame.shape[:2]
+            now = time.time()
 
-            frame = draw_word_hud(
-                frame=frame,
-                current_word=current_word,
-                char_idx=char_idx,
-                target=current_word[char_idx],
-                guess=guess,
-                streak=streak,
-                frames_needed=FRAMES_NEEDED,
-                words_done=words_done
-            )
+            guess = None
+            hand = result.hand_landmarks[0] if result.hand_landmarks else None
+            if hand:
+                if preferences.show_landmarks:
+                    for p in hand:
+                        cx, cy = int(p.x * w), int(p.y * h)
+                        cv2.circle(frame, (cx, cy), 5, (16, 185, 129), 1, cv2.LINE_AA)
+                        cv2.circle(frame, (cx, cy), 2, (255, 255, 255), -1, cv2.LINE_AA)
+                guess, _ = guess_letter(hand_to_numbers(hand), examples)
+            motion_letter = motion_tracker.update(
+                hand if not settings_panel.is_open else None, time.monotonic(), w / h)
+            if motion_letter:
+                guess = motion_letter
 
-        cv2.imshow("SignLingo", frame)
-        key = cv2.waitKey(1) & 0xFF
+            target = current_word[char_idx]
+            if now < celebrate_until:
+                frame = draw_success_card(frame, just_spelled)
+            else:
+                if settings_panel.is_open:
+                    streak = 0
+                elif target in MOTION_LETTERS:
+                    streak = FRAMES_NEEDED if motion_letter == target else 0
+                else:
+                    streak = streak + 1 if guess == target else 0
+                if streak >= FRAMES_NEEDED:
+                    streak = 0
+                    char_idx += 1
+                    if char_idx >= len(current_word):
+                        words_done += 1
+                        just_spelled = current_word
+                        celebrate_until = now + WORD_CELEBRATE_SECS
+                        current_word = get_random_word(previous_word=current_word)
+                        char_idx = 0
+                frame = draw_word_hud(frame, current_word, char_idx, current_word[char_idx],
+                                      guess, streak, FRAMES_NEEDED, words_done)
 
-        if MENU_BUTTON["clicked"]:
-            MENU_BUTTON["clicked"] = False
-            break
-        elif key == 27:
-            break
-        elif key == ord(" "):
-            current_word = get_random_word(previous_word=current_word)
-            char_idx = 0
-            streak = 0
-
-    cap.release()
-    cv2.destroyAllWindows()
+            draw_menu_button(frame)
+            settings_panel.draw(frame)
+            require_open_window()
+            cv2.imshow("SignLingo", frame)
+            key = cv2.waitKey(1) & 0xFF
+            require_open_window()
+            if settings_panel.handle_key(key):
+                limit_frame_rate(started, preferences.low_power)
+                continue
+            if MENU_BUTTON["clicked"]:
+                MENU_BUTTON["clicked"] = False
+                break
+            elif key == 27:
+                break
+            elif key == ord(" "):
+                current_word = get_random_word(previous_word=current_word)
+                char_idx = 0
+                streak = 0
+            limit_frame_rate(started, preferences.low_power)
 
 
 if __name__ == "__main__":

@@ -37,8 +37,34 @@ Run these from the project folder.
 | `python -m signlingo.words` | Word Challenge on its own: spell random words up to 5 letters. |
 | `python -m tools.collect_data yourname_left` | Record examples one key press at a time into `data/examples_yourname_left.json`. `1` undoes, ESC quits. |
 | `python -m tools.examples_tool count` | How many examples each letter has. |
-| `python -m unittest discover tests` | Tests for J/Z motion (no webcam needed). |
+| `python -m unittest discover tests` | Tests for J/Z, settings, both modes, and window cleanup (no webcam needed). |
 | `./packaging/build_app.sh` | Build the Mac app (`dist/SignLingo.app`) and `SignLingo-mac.zip` to share. |
+
+## Camera settings and closing the app
+
+Click the small **gear icon** in the upper-right corner of the menu, Single
+Letter Practice, or Word Challenge. The existing layout and two modes are
+unchanged. You can also press **comma (`,`)** to open/close settings.
+
+- **Low-power mode:** caps the processing loop at approximately 12 FPS. Actual
+  performance depends on the camera and computer. Existing frame-based holds
+  may take longer; perform J/Z more slowly if needed.
+- **Show hand landmarks:** switch off for a clean camera view. Recognition
+  remains active; only the dots are hidden.
+- **Selfie view:** switch between mirrored and unmirrored camera input.
+
+Click a setting row or press **1/2/3 inside the popup** to toggle it. ESC closes
+settings first; outside settings, ESC/Main Menu returns from a mode to the menu.
+Settings apply immediately, are shared by both modes, and are saved per user:
+
+- Windows: `%LOCALAPPDATA%/SignLingo/settings.json`
+- macOS: `~/Library/Application Support/SignLingo/settings.json`
+- Linux: `$XDG_CONFIG_HOME/SignLingo/settings.json` (defaults to `~/.config`)
+
+Practice progression pauses while settings are open. Closing the native window
+with its **X/red close button quits the app**, rather than reopening the menu.
+Camera and model resources are released on exit. The main menu does not request
+camera access until you choose a mode.
 
 ## Files
 
@@ -50,6 +76,9 @@ signlingo/                the app's code
   features.py             hand -> 42 numbers, and the k-NN letter guesser
   motion_recognition.py   J and Z from finger movement
   menu_button.py          the clickable "Main Menu" button both modes use
+  settings.py             shared, per-user camera preferences
+  settings_ui.py          small gear icon and settings popup
+  runtime.py              camera/model cleanup and native window-close handling
   paths.py                where the model and examples live
 models/
   hand_landmarker.task    MediaPipe hand model
